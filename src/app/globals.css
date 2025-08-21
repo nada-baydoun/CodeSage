@@ -1,26 +1,716 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* Core Colors */
+    --background: 222 84% 5%;
+    --foreground: 210 40% 98%;
+    
+    /* Card Colors */
+    --card: 222 84% 5%;
+    --card-foreground: 210 40% 98%;
+    
+    /* Primary Brand Colors */
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 84% 5%;
+    
+    /* Secondary Colors */
+    --secondary: 217 32% 17%;
+    --secondary-foreground: 210 40% 98%;
+    
+    /* Muted Colors */
+    --muted: 215 32% 27%;
+    --muted-foreground: 217 10% 64%;
+    
+    /* Accent Colors */
+    --accent: 217 32% 17%;
+    --accent-foreground: 210 40% 98%;
+    
+    /* Destructive */
+    --destructive: 0 62% 60%;
+    --destructive-foreground: 210 40% 98%;
+    
+    /* Border & Input */
+    --border: 217 32% 17%;
+    --input: 217 32% 17%;
+    --ring: 217 91% 60%;
+    
+    /* Radius */
+    --radius: 0.75rem;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Enhanced Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(15 23 42);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(71 85 105);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(100 116 139);
+}
+
+/* Glass Morphism Components */
+.glass {
+  background: rgba(15, 23, 42, 0.8);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.glass-card {
+  background: rgba(15, 23, 42, 0.8);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 1rem;
+  box-shadow: 
+    0 25px 50px -12px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+.glass-nav {
+  background: rgba(15, 23, 42, 0.9);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 0.75rem;
+  box-shadow: 
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+/* Gradient Text Effects */
+.gradient-text {
+  background: linear-gradient(to right, rgb(96 165 250), rgb(168 85 247), rgb(34 211 238));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.gradient-text-secondary {
+  background: linear-gradient(to right, rgb(52 211 153), rgb(34 211 238));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.gradient-text-accent {
+  background: linear-gradient(to right, rgb(244 114 182), rgb(168 85 247));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Enhanced Button Styles */
+.btn-primary {
+  background: linear-gradient(to right, rgb(37 99 235), rgb(147 51 234));
+  color: white;
+  font-weight: 500;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transform: none;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(to right, rgb(29 78 216), rgb(126 34 206));
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  transform: scale(1.05);
+}
+
+.btn-secondary {
+  background: linear-gradient(to right, rgb(71 85 105), rgb(51 65 85));
+  color: white;
+  font-weight: 500;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transform: none;
+}
+
+.btn-secondary:hover {
+  background: linear-gradient(to right, rgb(51 65 85), rgb(30 41 59));
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  transform: scale(1.05);
+}
+
+.btn-success {
+  background: linear-gradient(to right, rgb(5 150 105), rgb(6 182 212));
+  color: white;
+  font-weight: 500;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transform: none;
+}
+
+.btn-success:hover {
+  background: linear-gradient(to right, rgb(4 120 87), rgb(8 145 178));
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  transform: scale(1.05);
+}
+
+/* Badge Styles */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.badge-easy {
+  background: rgba(34, 197, 94, 0.2);
+  color: rgb(74 222 128);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.badge-easy:hover {
+  background: rgba(34, 197, 94, 0.3);
+  box-shadow: 0 10px 15px -3px rgba(34, 197, 94, 0.2);
+}
+
+.badge-medium {
+  background: rgba(245, 158, 11, 0.2);
+  color: rgb(251 191 36);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badge-medium:hover {
+  background: rgba(245, 158, 11, 0.3);
+  box-shadow: 0 10px 15px -3px rgba(245, 158, 11, 0.2);
+}
+
+.badge-hard {
+  background: rgba(239, 68, 68, 0.2);
+  color: rgb(248 113 113);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.badge-hard:hover {
+  background: rgba(239, 68, 68, 0.3);
+  box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.2);
+}
+
+.badge-tag {
+  background: rgba(59, 130, 246, 0.2);
+  color: rgb(96 165 250);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.badge-tag:hover {
+  background: rgba(59, 130, 246, 0.3);
+  box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.2);
+}
+
+/* Test Status Indicators */
+.test-status {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: center;
+  transition: all 0.3s;
+}
+
+.test-pending {
+  background: rgba(71, 85, 105, 0.5);
+  color: rgb(203 213 225);
+  border: 1px solid rgba(71, 85, 105, 0.5);
+}
+
+.test-pass {
+  background: rgba(34, 197, 94, 0.2);
+  color: rgb(74 222 128);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  box-shadow: 0 10px 15px -3px rgba(34, 197, 94, 0.2);
+}
+
+.test-fail {
+  background: rgba(239, 68, 68, 0.2);
+  color: rgb(248 113 113);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.2);
+}
+
+/* Monaco Editor Customizations */
+.monaco-editor {
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.monaco-editor .margin {
+  background-color: #0f172a !important;
+}
+
+.monaco-editor .monaco-editor-background {
+  background-color: #0f172a !important;
+}
+
+.monaco-editor .current-line {
+  border: none !important;
+  background-color: rgba(99, 102, 241, 0.1) !important;
+}
+
+/* Code Block Styling */
+.code-block {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(71, 85, 105, 0.5);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.875rem;
+  color: rgb(203 213 225);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+/* Problem Description Styling */
+.problem-content {
+  color: rgb(203 213 225);
+  line-height: 1.625;
+}
+
+.problem-content h1,
+.problem-content h2,
+.problem-content h3 {
+  font-weight: 600;
+  color: rgb(248 250 252);
+  margin-bottom: 0.75rem;
+}
+
+.problem-content p {
+  margin-bottom: 1rem;
+  color: rgb(226 232 240);
+}
+
+.problem-content ul,
+.problem-content ol {
+  margin-bottom: 1rem;
+  padding-left: 1.5rem;
+}
+
+.problem-content li {
+  margin-bottom: 0.5rem;
+  color: rgb(226 232 240);
+}
+
+.problem-content code {
+  background: rgba(15, 23, 42, 0.8);
+  color: rgb(34 211 238);
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.875rem;
+}
+
+/* Animation Classes */
+.animate-fade-in {
+  animation: fadeIn 0.6s ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.6s ease-out;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Hover Effects */
+.hover-lift {
+  transition: all 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+.hover-glow {
+  transition: all 0.3s;
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 30px rgba(99, 102, 241, 0.3);
+}
+
+/* Focus States */
+.focus-ring {
+  outline: none;
+}
+
+.focus-ring:focus {
+  outline: 2px solid rgba(59, 130, 246, 0.5);
+  outline-offset: 2px;
+}
+
+/* Loading States */
+.loading-spinner {
+  animation: spin 1s linear infinite;
+  border-radius: 50%;
+  border: 2px solid rgb(71 85 105);
+  border-top-color: rgb(59 130 246);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive Design Helpers */
+@media (max-width: 768px) {
+  .glass {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+  
+  .glass-card {
+    border-radius: 0.75rem;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(38 38 38);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(82 82 82);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(115 115 115);
+}
+
+/* Glass morphism effects */
+.glass {
+  background: rgba(255, 255, 255, 0.05);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-dark {
+  background: rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: blur(15px);
+  backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Neon glow effects */
+.neon-glow {
+  box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
+}
+
+.neon-glow-green {
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
+}
+
+/* Problem statement styling */
+.problem-description {
+  color: rgb(229 229 229);
+  line-height: 1.625;
+}
+
+.problem-description h1,
+.problem-description h2,
+.problem-description h3 {
+  font-weight: 600;
+  color: rgb(245 245 245);
+  margin-bottom: 0.75rem;
+}
+
+.problem-description p {
+  margin-bottom: 1rem;
+  color: rgb(212 212 212);
+}
+
+.problem-description ul,
+.problem-description ol {
+  margin-bottom: 1rem;
+  padding-left: 1.5rem;
+}
+
+.problem-description li {
+  margin-bottom: 0.5rem;
+  color: rgb(212 212 212);
+}
+
+/* Code blocks */
+.code-block {
+  background: rgb(38 38 38);
+  border: 1px solid rgb(64 64 64);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.875rem;
+  color: rgb(229 229 229);
+}
+
+/* Test case styling */
+.test-case {
+  border: 1px solid rgb(64 64 64);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  background: rgba(38, 38, 38, 0.5);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  transition: all 0.3s ease;
+}
+
+.test-case:hover {
+  border-color: rgb(82 82 82);
+  background: rgba(38, 38, 38, 0.7);
+  transform: translateY(-2px);
+}
+
+.test-case-input,
+.test-case-output {
+  background: rgb(23 23 23);
+  border: 1px solid rgb(82 82 82);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.875rem;
+  color: rgb(229 229 229);
+}
+
+/* Difficulty badges with glow - New Chess Piece System */
+.difficulty-rook {
+  background: rgba(34, 197, 94, 0.2);
+  color: rgb(74 222 128);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.2);
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+
+.difficulty-knight {
+  background: rgba(59, 130, 246, 0.2);
+  color: rgb(96 165 250);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+
+.difficulty-bishop {
+  background: rgba(147, 51, 234, 0.2);
+  color: rgb(168 85 247);
+  border: 1px solid rgba(147, 51, 234, 0.3);
+  box-shadow: 0 0 15px rgba(147, 51, 234, 0.2);
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+
+.difficulty-queen {
+  background: rgba(236, 72, 153, 0.2);
+  color: rgb(244 114 182);
+  border: 1px solid rgba(236, 72, 153, 0.3);
+  box-shadow: 0 0 15px rgba(236, 72, 153, 0.2);
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+
+.difficulty-king {
+  background: rgba(239, 68, 68, 0.2);
+  color: rgb(248 113 113);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+
+/* Tag badges */
+.tag-badge {
+  background: rgba(64, 64, 64, 0.5);
+  color: rgb(212 212 212);
+  border: 1px solid rgba(82, 82, 82, 0.5);
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.tag-badge:hover {
+  background: rgba(82, 82, 82, 0.7);
+  border-color: rgba(115, 115, 115, 0.7);
+  transform: translateY(-1px);
+}
+
+/* Action buttons */
+.action-button {
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  transition: all 300ms ease;
+  transform: none;
+}
+
+.action-button:hover {
+  transform: translateY(-2px);
+}
+
+.hint-button {
+  background: linear-gradient(to right, rgb(37 99 235), rgb(147 51 234));
+  color: white;
+  border: none;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.hint-button:hover {
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.submit-button {
+  background: linear-gradient(to right, rgb(22 163 74), rgb(16 185 129));
+  color: white;
+  border: none;
+  box-shadow: 0 4px 15px rgba(34, 197, 94, 0.4);
+}
+
+.submit-button:hover {
+  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.6);
+}
+
+/* Card enhancements */
+.enhanced-card {
+  background: rgba(38, 38, 38, 0.5);
+  border: 1px solid rgba(64, 64, 64, 0.5);
+  border-radius: 1rem;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  transition: all 0.3s ease;
+}
+
+.enhanced-card:hover {
+  border-color: rgba(82, 82, 82, 0.7);
+  background: rgba(38, 38, 38, 0.7);
+  transform: translateY(-2px);
+}
+
+/* Monaco Editor customizations */
+.monaco-editor {
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.monaco-editor .monaco-editor-background {
+  background-color: #0a0a0a !important;
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+/* Responsive design enhancements */
+@media (max-width: 1024px) {
+  .glass {
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+  }
+  
+  .glass-dark {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
 }
