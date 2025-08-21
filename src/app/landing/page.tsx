@@ -11,9 +11,6 @@ import {
   BookOpen, 
   Target, 
   ArrowRight,
-  CheckCircle,
-  Star,
-  Clock,
   TrendingUp,
   Play,
   User,
@@ -59,27 +56,6 @@ const stats = [
   { label: "Get personalised AI Assistance", value: "2M+", icon: Zap },
   { label: "Increase your critical Thinking Skills", value: "10M+", icon: Lightbulb },
   { label: "Track your progress", value: "25K+", icon: TrendingUp }
-];
-
-const testimonials = [
-  {
-    name: "Sarah Chen",
-    role: "Software Engineer at Google",
-    avatar: "SC",
-    quote: "CodeSage helped me ace my technical interviews. The practice problems are incredibly well-curated."
-  },
-  {
-    name: "Michael Rodriguez",
-    role: "CS Student at MIT",
-    avatar: "MR",
-    quote: "The real-time feedback and detailed explanations accelerated my learning like no other platform."
-  },
-  {
-    name: "Priya Patel",
-    role: "Senior Developer at Microsoft",
-    avatar: "PP",
-    quote: "I use CodeSage to stay sharp. The contest environment is as close to real interviews as it gets."
-  }
 ];
 
 export default function LandingPage() {

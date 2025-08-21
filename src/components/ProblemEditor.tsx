@@ -1,13 +1,11 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import Editor from "@monaco-editor/react";
 import { 
   Play, 
   Send, 
-  Eye, 
-  EyeOff, 
   Code2, 
   Timer, 
   Trophy, 
@@ -19,8 +17,7 @@ import {
   X,
   Loader2,
   Lightbulb,
-  Target,
-  Zap
+  Target
 } from "lucide-react";
 
 const problem = {
@@ -96,7 +93,6 @@ export default function ProblemEditor() {
   const [results, setResults] = useState<string | null>(null);
   const [testStatuses, setTestStatuses] = useState<number[]>([]);
   const [activeTab, setActiveTab] = useState<'description' | 'editorial' | 'discussions'>('description');
-  const [editorTheme, setEditorTheme] = useState('vs-dark');
   const [fontSize, setFontSize] = useState(14);
 
   const runCode = async () => {
@@ -111,7 +107,7 @@ export default function ProblemEditor() {
     const lowered = code.toLowerCase();
     const hasImplementation = !lowered.includes("pass") && !lowered.includes("todo");
     
-    const statuses = problem.examples.map((_, idx) => {
+    const statuses = problem.examples.map(() => {
       if (!hasImplementation) return 2; // fail if no implementation
       return Math.random() > 0.3 ? 1 : 2; // 70% pass rate for demo
     });
@@ -237,7 +233,7 @@ export default function ProblemEditor() {
                 ].map(({ id, label, icon: Icon }) => (
                   <button
                     key={id}
-                    onClick={() => setActiveTab(id as any)}
+                    onClick={() => setActiveTab(id as 'description' | 'editorial' | 'discussions')}
                     className={`flex-1 flex items-center justify-center space-x-2 px-4 py-3 rounded-xl transition-all duration-200 ${
                       activeTab === id
                         ? 'bg-blue-500/20 text-blue-400 shadow-lg'
@@ -643,7 +639,7 @@ export default function ProblemEditor() {
                       Ready to test your code?
                     </h4>
                     <p className="text-slate-400">
-                      Click the "Run" button to execute your solution against the test cases.
+                      Click the &quot;Run&quot; button to execute your solution against the test cases.
                     </p>
                   </div>
                 )}
