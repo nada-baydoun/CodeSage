@@ -2,6 +2,8 @@
 
 # CodeSage
 
+[![CI](https://github.com/nada-baydoun/CodeSage/actions/workflows/ci.yml/badge.svg)](https://github.com/nada-baydoun/CodeSage/actions/workflows/ci.yml)
+
 An AI‑assisted competitive programming platform built with Next.js, TypeScript, Tailwind, and Monaco Editor.
 
 [Website](https://github.com/nada-baydoun/CodeSage) • [Issues](https://github.com/nada-baydoun/CodeSage/issues) • [Pull Requests](https://github.com/nada-baydoun/CodeSage/pulls)

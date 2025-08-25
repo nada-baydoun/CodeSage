@@ -1,5 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import ProblemEditor from '@/components/ProblemEditor';
 import { headers } from 'next/headers';
+import Link from 'next/link';
 
 // Helper to build Codeforces-like ID string used in your JSONs, e.g. "306/A"
 function makeKey(contestId: string | number, index: string) {
@@ -16,7 +18,6 @@ async function getProblemData(contestId: string, index: string) {
   if (!problemsRes.ok) throw new Error(`Failed to load problemset (${problemsRes.status})`);
   const problems = await problemsRes.json();
 
-  const id = `${contestId}${index}`; // matches Problems table id
   const meta = (problems as any[]).find(p => String(p.contestId) === String(contestId) && String(p.index) === String(index));
 
   // Fetch descriptions map
@@ -75,7 +76,7 @@ export default async function ProblemPage({ params }: { params: Promise<{ contes
         <div className="max-w-xl text-center">
           <h1 className="text-2xl font-semibold mb-2">Unable to load problem</h1>
           <p className="text-white/80 mb-6">{message}</p>
-          <a href="/problems" className="text-blue-400 underline">Back to Problem Set</a>
+          <Link href="/problems" className="text-blue-400 underline">Back to Problem Set</Link>
         </div>
       </div>
     );

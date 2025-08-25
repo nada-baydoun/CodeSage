@@ -1,11 +1,17 @@
 // Lightweight Pyodide loader and Python runner for client-side code execution
 // Loads Pyodide from CDN once and exposes a helper to run user code with an input setup.
 
-let pyodidePromise: Promise<any> | null = null;
+let pyodidePromise: Promise<{
+  globals: { set: (k: string, v: unknown) => void };
+  runPython: (code: string) => unknown;
+}> | null = null;
 
 declare global {
   interface Window {
-    loadPyodide?: (opts?: any) => Promise<any>;
+    loadPyodide?: (opts?: { indexURL?: string }) => Promise<{
+      globals: { set: (k: string, v: unknown) => void };
+      runPython: (code: string) => unknown;
+    }>;
   }
 }
 
@@ -24,7 +30,8 @@ async function ensurePyodideLoaded() {
           document.head.appendChild(s);
         });
       }
-      const py = await window.loadPyodide?.({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/' });
+  if (!window.loadPyodide) throw new Error('Pyodide loader not available on window');
+  const py = await window.loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/' });
       resolve(py);
     } catch (err) {
       reject(err);
@@ -57,7 +64,7 @@ function coerceToJsonLike(str: string) {
   return s;
 }
 
-function deepEqual(a: any, b: any) {
+function deepEqual(a: unknown, b: unknown) {
   if (a === b) return true;
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length !== b.length) return false;
@@ -67,21 +74,21 @@ function deepEqual(a: any, b: any) {
     return true;
   }
   if (a && b && typeof a === 'object' && typeof b === 'object') {
-    const ak = Object.keys(a).sort();
-    const bk = Object.keys(b).sort();
+    const ak = Object.keys(a as Record<string, unknown>).sort();
+    const bk = Object.keys(b as Record<string, unknown>).sort();
     if (ak.length !== bk.length) return false;
     for (let i = 0; i < ak.length; i++) {
       if (ak[i] !== bk[i]) return false;
-      if (!deepEqual(a[ak[i]], b[bk[i]])) return false;
+      if (!deepEqual((a as Record<string, unknown>)[ak[i]], (b as Record<string, unknown>)[bk[i]])) return false;
     }
     return true;
   }
   return false;
 }
 
-function arrayMultisetEqual(a: any[], b: any[]) {
+function arrayMultisetEqual(a: unknown[], b: unknown[]) {
   if (a.length !== b.length) return false;
-  const norm = (v: any) => typeof v === 'object' ? JSON.stringify(v) : String(v);
+  const norm = (v: unknown) => (v && typeof v === 'object') ? JSON.stringify(v) : String(v);
   const sa = [...a].map(norm).sort();
   const sb = [...b].map(norm).sort();
   for (let i = 0; i < sa.length; i++) if (sa[i] !== sb[i]) return false;
@@ -209,7 +216,8 @@ json.dumps(result)
     }
     const data: RunResult = JSON.parse(out);
     return data;
-  } catch (e: any) {
-    return { stdout: '', stderr: String(e?.message || e), value: undefined, exception: 'Pyodide execution failed' };
+  } catch (e) {
+    const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : String(e);
+    return { stdout: '', stderr: msg, value: undefined, exception: 'Pyodide execution failed' };
   }
 }

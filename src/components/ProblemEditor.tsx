@@ -9,10 +9,8 @@ import {
   Code2, 
   Timer, 
   Trophy, 
-  BookOpen, 
   Settings, 
   User, 
-  ChevronRight,
   Check,
   X,
   Loader2,
@@ -20,7 +18,7 @@ import {
   Target,
   Copy
 } from "lucide-react";
-import { runPythonWithInput, normalizeOutput, canonicalizeInputSetup, outputsMatch } from "../lib/pyRunner";
+import { runPythonWithInput, canonicalizeInputSetup, outputsMatch } from "../lib/pyRunner";
 
 // Types for dynamic problem content
 type Example = { input: string; output: string; explanation?: string };
@@ -153,8 +151,21 @@ ${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
   // Fixed editor font size (no user controls to change it)
   const editorFontSize = 16;
   const [copied, setCopied] = useState<Record<string, boolean>>({});
-  const editorRef = useRef<any | null>(null);
-  const monacoRef = useRef<any | null>(null);
+  type MonacoEditorLike = {
+    getContentHeight?: () => number;
+    getLayoutInfo: () => { width: number; height?: number };
+    layout: (opts: { width: number; height: number }) => void;
+    onDidContentSizeChange: (cb: () => void) => void;
+    getModel?: () => {
+      getValue: () => string;
+      setValue: (v: string) => void;
+      getPositionAt: (offset: number) => unknown;
+    } | null;
+    setPosition: (pos: unknown) => void;
+    getDomNode?: () => HTMLElement | null;
+    getScrollHeight?: () => number;
+  };
+  const editorRef = useRef<MonacoEditorLike | null>(null);
   const [editorHeight, setEditorHeight] = useState<string | number>('800px');
   // Cleanup for wheel forwarding listener
   const wheelUnsubscribeRef = useRef<(() => void) | null>(null);
@@ -213,7 +224,7 @@ ${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
           return next;
         });
         if (ok) passCount++;
-      } catch (e) {
+      } catch {
         setTestStatuses((prev) => {
           const next = [...prev];
           next[i] = 2;
@@ -277,8 +288,9 @@ ${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
       }
       const produced = (res.value ?? res.stdout ?? "").toString();
       setRunOutput(produced);
-    } catch (e: any) {
-      setRunError(`Runner error: ${e?.message || String(e)}`);
+    } catch (e) {
+      const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: unknown }).message) : String(e);
+      setRunError(`Runner error: ${msg}`);
     } finally {
       setRunningRaw(false);
     }
@@ -551,9 +563,8 @@ ${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
                     renderWhitespace: 'none'
                   }}
                   onChange={(value) => setCode(value || "")}
-                  onMount={(editor, monaco) => {
+                  onMount={(editor) => {
                     editorRef.current = editor;
-                    monacoRef.current = monaco;
                     // initial resize
                     setTimeout(resizeEditorToContent, 20);
                     editor.onDidContentSizeChange(() => {
@@ -567,12 +578,12 @@ ${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
 
                     // Block edits inside the protected constraints header
                     try {
-                      editor.onDidChangeModelContent((ev: any) => {
+                      editor.onDidChangeModelContent((ev: { changes?: Array<{ rangeOffset: number }> }) => {
                         if (isRevertingRef.current) return;
                         const model = editor.getModel?.();
                         if (!model) return;
                         const protectedEnd = protectedEndOffsetRef.current ?? 0;
-                        const violates = (ev?.changes ?? []).some((ch: any) => ch.rangeOffset < protectedEnd);
+                        const violates = (ev?.changes ?? []).some((ch) => ch.rangeOffset < protectedEnd);
                         if (violates) {
                           // Revert to last valid content and place cursor at the first editable position
                           try {
@@ -595,11 +606,12 @@ ${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
                     try {
                       const domNode = editor.getDomNode?.();
                       if (domNode) {
-                        const wheelHandler = (ev: WheelEvent) => {
+                        const wheelHandler: EventListener = (evt) => {
+                          const ev = evt as WheelEvent;
                           // Determine if the editor can scroll internally
                           const info = editor.getLayoutInfo?.();
                           const scrollHeight = editor.getScrollHeight?.();
-                          const canScrollInternally = !!(info && scrollHeight && scrollHeight > info.height);
+                          const canScrollInternally = !!(info && scrollHeight && scrollHeight > (info.height || 0));
                           if (!canScrollInternally) {
                             // Forward scrolling to the page
                             window.scrollBy({ top: ev.deltaY, left: 0, behavior: 'auto' });
@@ -607,7 +619,7 @@ ${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
                           }
                         };
                         domNode.addEventListener('wheel', wheelHandler, { passive: false });
-                        wheelUnsubscribeRef.current = () => domNode.removeEventListener('wheel', wheelHandler as any);
+                        wheelUnsubscribeRef.current = () => domNode.removeEventListener('wheel', wheelHandler);
                       }
                     } catch {
                       // ignore
