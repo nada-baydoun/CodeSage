@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import Editor from "@monaco-editor/react";
@@ -17,10 +17,30 @@ import {
   X,
   Loader2,
   Lightbulb,
-  Target
+  Target,
+  Copy
 } from "lucide-react";
+import { runPythonWithInput, normalizeOutput, canonicalizeInputSetup, outputsMatch } from "../lib/pyRunner";
 
-const problem = {
+// Types for dynamic problem content
+type Example = { input: string; output: string; explanation?: string };
+type ProblemContent = {
+  id: string;
+  name: string;
+  rating?: number;
+  difficulty?: string;
+  tags?: string[];
+  statement?: string;
+  examples?: Example[];
+  constraints?: string[];
+  hint?: string;
+  companies?: string[];
+  acceptance?: number;
+  totalSubmissions?: string | number;
+};
+
+// Default sample problem (used when no data provided)
+const defaultProblem: ProblemContent = {
   id: "p1",
   name: "Two Sum",
   difficulty: "Easy",
@@ -50,76 +70,228 @@ const problem = {
     "-10⁹ ≤ target ≤ 10⁹",
     "Only one valid answer exists."
   ],
-  hint: "A really brute force way would be to search for all possible pairs of numbers but that would be too slow. Again, it's best to try out brute force solutions for just for completeness. It is from these brute force solutions that you can come up with optimizations. So, if we fix one of the numbers, say x, we have to scan the entire array to find the next number y which is value - x where value is the input parameter. Can we change our array somehow so that this search becomes faster?",
+  hint: "Try using a hash map to store complements and check as you iterate.",
   companies: ["Amazon", "Google", "Microsoft", "Apple"],
   acceptance: 51.3,
   totalSubmissions: "15.2M"
 };
 
-const initialCode = `# ${problem.name} - ${problem.difficulty}
-# ${problem.statement}
-#
-# Examples:
-# Input: nums = [2,7,11,15], target = 9
-# Output: [0,1]
-# Explanation: Because nums[0] + nums[1] == 9, we return [0, 1].
-#
-# Input: nums = [3,2,4], target = 6 
-# Output: [1,2]
-# Explanation: Because nums[1] + nums[2] == 6, we return [1, 2].
-#
-# Input: nums = [3,3], target = 6
-# Output: [0,1] 
-# Explanation: Because nums[0] + nums[1] == 6, we return [0, 1].
-#
-# Constraints:
-# - 2 ≤ nums.length ≤ 10⁴
-# - -10⁹ ≤ nums[i] ≤ 10⁹
-# - -10⁹ ≤ target ≤ 10⁹
-# - Only one valid answer exists.
+function ratingToDifficulty(r?: number): string | undefined {
+  if (typeof r !== "number") return undefined;
+  if (r <= 1200) return "Easy";
+  if (r <= 1900) return "Medium";
+  return "Hard";
+}
 
-from typing import List
+// Abbreviate tags for compact display
+const TAG_MAP: Record<string,string> = {
+  "binary search":"BS","ternary search":"TS","two pointers":"TP","brute force":"BF","data structures":"DS",
+  "dynamic programming":"DP","graphs":"GR","graph matchings":"GM","shortest paths":"SP","depth-first search":"DFS",
+  "dfs and similar":"DFSS","breadth-first search":"BFS","disjoint set union":"DSU","math":"MATH","number theory":"NT",
+  "combinatorics":"COMB","greedy":"GRD","divide and conquer":"DAC","constructive algorithms":"CA","strings":"STR",
+  "bitmasks":"BIT","implementation":"IMP","hashing":"HASH","sortings":"SORT","geometry":"GEO","probabilities":"PROB",
+  "interactive":"INT","trees":"TREE"
+};
 
-class Solution:
-    def twoSum(self, nums: List[int], target: int) -> List[int]:
-        # Write your solution here
-        pass
+function abbrTag(tag: string) {
+  const t = (tag || "").toLowerCase().trim();
+  if (TAG_MAP[t]) return TAG_MAP[t];
+  const m = t.match(/[a-z0-9]+/g) || [];
+  const s = m.map(w => w[0]).join("").toUpperCase();
+  return s || tag.slice(0,3).toUpperCase();
+}
+
+// Rating heat class bucket (match globals.css classes)
+function ratingBucket(r: number) {
+  const clamped = Math.min(Math.max(r, 800), 3500);
+  const i = Math.round((clamped - 800) / 100);
+  return 800 + i * 100;
+}
+function ratingHeatClass(r?: number) {
+  if (!r) return undefined;
+  return `rating-heat rating-h-${ratingBucket(r)}`;
+}
+
+export default function ProblemEditor({ problem }: { problem?: ProblemContent }) {
+  const prob: ProblemContent = useMemo(() => {
+    const merged: ProblemContent = {
+      ...defaultProblem,
+      ...(problem || {}),
+      tags: problem?.tags ?? defaultProblem.tags,
+      examples: problem?.examples ?? defaultProblem.examples,
+      constraints: problem?.constraints ?? defaultProblem.constraints,
+      companies: problem?.companies ?? defaultProblem.companies,
+    };
+    // Derive difficulty from rating if not provided
+    if (!merged.difficulty) merged.difficulty = ratingToDifficulty(merged.rating) || defaultProblem.difficulty;
+    return merged;
+  }, [problem]);
+
+  // Editor should start with only commented constraints (no starter code)
+  const initialCode = `# Constraints:
+${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
 `;
 
-export default function ProblemEditor() {
   const [code, setCode] = useState(initialCode);
   const [showHint, setShowHint] = useState(false);
   const [running, setRunning] = useState(false);
+  const [runningRaw, setRunningRaw] = useState(false);
   const [results, setResults] = useState<string | null>(null);
   const [testStatuses, setTestStatuses] = useState<number[]>([]);
-  const [activeTab, setActiveTab] = useState<'description' | 'editorial' | 'discussions'>('description');
-  const [fontSize, setFontSize] = useState(14);
+  const [userOutputs, setUserOutputs] = useState<string[]>([]);
+  const [runOutput, setRunOutput] = useState<string>("");
+  const [runError, setRunError] = useState<string>("");
+  const [runInput, setRunInput] = useState<string>("");
+  const [showRunPanel, setShowRunPanel] = useState<boolean>(false);
+  const runInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const autoresizeRunInput = () => {
+    const el = runInputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(240, Math.max(28, el.scrollHeight)) + 'px';
+  };
+  // Fixed editor font size (no user controls to change it)
+  const editorFontSize = 16;
+  const [copied, setCopied] = useState<Record<string, boolean>>({});
+  const editorRef = useRef<any | null>(null);
+  const monacoRef = useRef<any | null>(null);
+  const [editorHeight, setEditorHeight] = useState<string | number>('800px');
+  // Cleanup for wheel forwarding listener
+  const wheelUnsubscribeRef = useRef<(() => void) | null>(null);
+  // Protect the initial commented constraints from edits
+  const protectedEndOffsetRef = useRef<number>(initialCode.length);
+  const lastValidCodeRef = useRef<string>(initialCode);
+  const isRevertingRef = useRef<boolean>(false);
+
+  const flashCopied = (key: string, value: string) => {
+    navigator.clipboard.writeText(value);
+    setCopied((prev) => ({ ...prev, [key]: true }));
+    setTimeout(() => {
+      setCopied((prev) => ({ ...prev, [key]: false }));
+    }, 900);
+  };
 
   const runCode = async () => {
     setRunning(true);
     setResults(null);
-    setTestStatuses(problem.examples.map(() => 0));
+    const n = (prob.examples ?? []).length;
+    setTestStatuses(Array.from({ length: n }, () => 0));
+    setUserOutputs(Array.from({ length: n }, () => ""));
 
-    // Simulate evaluation delay
-    await new Promise((res) => setTimeout(res, 1200));
+    const examples = prob.examples ?? [];
+    let passCount = 0;
+    for (let i = 0; i < examples.length; i++) {
+      const ex = examples[i];
+      // Convert input example to Python assignments
+      const inputSetup = canonicalizeInputSetup(ex.input || "");
+      try {
+        const res = await runPythonWithInput(lastValidCodeRef.current || code, inputSetup);
+        if (res.exception) {
+          setUserOutputs((prev) => {
+            const next = [...prev];
+            next[i] = `${res.exception}${res.stderr ? `\n${res.stderr}` : ''}`;
+            return next;
+          });
+          setTestStatuses((prev) => {
+            const next = [...prev];
+            next[i] = 2;
+            return next;
+          });
+          continue;
+        }
+        const produced = (res.value ?? res.stdout ?? "").toString();
+        const expected = ex.output ?? "";
+        const ok = outputsMatch(expected, produced);
+        setUserOutputs((prev) => {
+          const next = [...prev];
+          next[i] = produced;
+          return next;
+        });
+        setTestStatuses((prev) => {
+          const next = [...prev];
+          next[i] = ok ? 1 : 2;
+          return next;
+        });
+        if (ok) passCount++;
+      } catch (e) {
+        setTestStatuses((prev) => {
+          const next = [...prev];
+          next[i] = 2;
+          return next;
+        });
+        setUserOutputs((prev) => {
+          const next = [...prev];
+          next[i] = "Runtime error";
+          return next;
+        });
+      }
+    }
 
-    // Simulate realistic test results
-    const lowered = code.toLowerCase();
-    const hasImplementation = !lowered.includes("pass") && !lowered.includes("todo");
-    
-    const statuses = problem.examples.map(() => {
-      if (!hasImplementation) return 2; // fail if no implementation
-      return Math.random() > 0.3 ? 1 : 2; // 70% pass rate for demo
-    });
-    
-    setTestStatuses(statuses);
-    const passed = statuses.filter((s) => s === 1).length;
-    setResults(`${passed}/${problem.examples.length} test cases passed`);
+    const total = examples.length;
+    setResults(total > 0 ? `${passCount}/${total} test cases passed` : "Ran 0 sample tests");
     setRunning(false);
   };
 
+  // Resize editor to fit content (no internal editor scroll)
+  const resizeEditorToContent = () => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    try {
+      const contentHeight = ed.getContentHeight ? ed.getContentHeight() : undefined;
+      const height = Math.max(200, (contentHeight ?? 0));
+      setEditorHeight(`${height}px`);
+      ed.layout({ width: ed.getLayoutInfo().width, height });
+    } catch {
+      // ignore
+    }
+  };
+
+  // Recompute when code changes
+  useEffect(() => {
+    // small timeout to wait for content updates
+    const t = setTimeout(() => resizeEditorToContent(), 40);
+    return () => clearTimeout(t);
+  }, [code]);
+
+  // Cleanup any editor-bound listeners on unmount
+  useEffect(() => {
+    return () => {
+      try { wheelUnsubscribeRef.current?.(); } catch {}
+    };
+  }, []);
+
   const submitCode = () => {
     alert("🚀 Code submitted successfully! Real submission system coming soon.");
+  };
+
+  const runRaw = async (inputOverride?: string) => {
+    setRunningRaw(true);
+    setRunOutput("");
+    setRunError("");
+    try {
+      // Run with optional stdin provided by user
+      const stdinToUse = (inputOverride !== undefined ? inputOverride : runInput) ?? "";
+      const res = await runPythonWithInput(lastValidCodeRef.current || code, stdinToUse);
+      if (res.exception) {
+        setRunError(`${res.exception}${res.stderr ? `\n${res.stderr}` : ''}`);
+      }
+      const produced = (res.value ?? res.stdout ?? "").toString();
+      setRunOutput(produced);
+    } catch (e: any) {
+      setRunError(`Runner error: ${e?.message || String(e)}`);
+    } finally {
+      setRunningRaw(false);
+    }
+  };
+
+  const onClickRun = () => {
+    setShowRunPanel(true);
+    setRunOutput("");
+    setRunError("");
+    // focus input box shortly after render
+    setTimeout(() => {
+      runInputRef.current?.focus();
+    }, 50);
   };
 
   const getDifficultyColor = (difficulty: string) => {
@@ -166,7 +338,6 @@ export default function ProblemEditor() {
             <div className="flex items-center space-x-4">
               <Button 
                 className="bg-slate-800/50 hover:bg-slate-700/50 text-slate-300 border border-slate-700/50"
-                onClick={() => setFontSize(fontSize === 14 ? 16 : 14)}
               >
                 <Settings className="w-4 h-4 mr-2" />
                 Settings
@@ -184,77 +355,47 @@ export default function ProblemEditor() {
         <div className="mb-8">
           <div className="flex items-start justify-between mb-6">
             <div className="space-y-4">
-              <div className="flex items-center space-x-4">
-                <h1 className="text-3xl font-bold text-slate-100">{problem.name}</h1>
-                <div className="flex items-center space-x-2">
-                  <span className={`badge ${getDifficultyColor(problem.difficulty)}`}>
-                    {problem.difficulty}
+              <div className="flex items-center flex-wrap gap-3">
+                <h1 className="text-3xl font-bold text-slate-100 mr-1">{prob.name}</h1>
+                {/* Difficulty/Rating chip */}
+                {typeof prob.rating === 'number' ? (
+                  <span className={`rating-heat ${ratingHeatClass(prob.rating) || ''}`} title={`Codeforces rating: ${prob.rating}`}>
+                    {prob.rating}
                   </span>
-                  <span className="text-slate-400 text-sm">•</span>
-                  <span className="text-emerald-400 text-sm font-medium">
-                    {problem.acceptance}% acceptance
-                  </span>
+                ) : (
+                  prob.difficulty && (
+                    <span className={`badge ${getDifficultyColor(prob.difficulty)}`}>
+                      {prob.difficulty}
+                    </span>
+                  )
+                )}
+
+                {/* Abbreviated tags next to difficulty */}
+                <div className="flex items-center flex-wrap gap-1">
+                  {(prob.tags ?? []).map((tag) => (
+                    <span key={tag} className="badge badge-tag text-xs py-0.5 px-2" title={tag}>
+                      {abbrTag(tag)}
+                    </span>
+                  ))}
                 </div>
               </div>
               
-              <div className="flex items-center space-x-6 text-sm text-slate-400">
-                <div className="flex items-center space-x-2">
-                  <Target className="w-4 h-4" />
-                  <span>{problem.totalSubmissions} submissions</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Trophy className="w-4 h-4" />
-                  <span>Companies: {problem.companies.slice(0, 2).join(", ")}</span>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {problem.tags.map((tag) => (
-                  <span key={tag} className="badge badge-tag">
-                    {tag}
-                  </span>
-                ))}
-              </div>
+              {/* Removed submissions/companies row and duplicate full tag list */}
             </div>
           </div>
         </div>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Left Panel - Problem Description */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Tab Navigation */}
-            <div className="glass-card p-1">
-              <div className="flex space-x-1">
-                {[
-                  { id: 'description', label: 'Description', icon: BookOpen },
-                  { id: 'editorial', label: 'Editorial', icon: Lightbulb },
-                  { id: 'discussions', label: 'Discuss', icon: Trophy }
-                ].map(({ id, label, icon: Icon }) => (
-                  <button
-                    key={id}
-                    onClick={() => setActiveTab(id as 'description' | 'editorial' | 'discussions')}
-                    className={`flex-1 flex items-center justify-center space-x-2 px-4 py-3 rounded-xl transition-all duration-200 ${
-                      activeTab === id
-                        ? 'bg-blue-500/20 text-blue-400 shadow-lg'
-                        : 'text-slate-400 hover:text-slate-300 hover:bg-slate-800/50'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span className="font-medium text-sm">{label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
+        {/* Main Content - top smaller, editor larger so Monaco is big by default */}
+        <div className="flex flex-col gap-6">
+          {/* Top Panel - Problem Description (auto height, expand to fit) */}
+          <div>
             {/* Problem Content */}
-            <Card className="glass-card p-6 space-y-6">
-              {activeTab === 'description' && (
-                <div className="space-y-6">
+            <Card className="glass-card p-6 space-y-6 h-full overflow-auto">
+              <div className="space-y-6">
                   {/* Problem Statement */}
                   <div className="problem-content">
-                    <p className="text-slate-300 leading-relaxed text-base">
-                      {problem.statement}
+                    <p className="text-slate-300 leading-relaxed text-base whitespace-pre-line">
+                      {prob.statement ?? "No description available for this problem yet."}
                     </p>
                   </div>
 
@@ -264,44 +405,83 @@ export default function ProblemEditor() {
                       <Target className="w-5 h-5 mr-2 text-blue-400" />
                       Examples
                     </h3>
-                    
-                    <div className="space-y-4">
-                      {problem.examples.map((example, i) => (
-                        <div key={i} className="glass rounded-xl overflow-hidden">
-                          <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 px-4 py-3 border-b border-slate-700/50">
-                            <div className="flex items-center">
-                              <div className="w-2 h-2 rounded-full bg-blue-400 mr-3"></div>
-                              <span className="text-sm font-medium text-slate-200">
-                                Example {i + 1}
-                              </span>
-                            </div>
+        <div className="flex gap-4 w-full overflow-visible">
+                      {(prob.examples ?? []).map((example, i) => (
+                        <div
+                          key={i}
+          className="rounded-xl overflow-hidden min-h-[130px] flex-1 min-w-0 flex flex-col bg-slate-900/50 border-2 border-white transition-all"
+                        >
+          <div className="px-3 py-1.5 border-b border-white">
+                            <span className="text-xs font-extrabold uppercase tracking-wide text-pink-500">
+                              Test Case {i + 1}
+                            </span>
                           </div>
-                          
-                          <div className="p-4 space-y-3">
+
+                          <div className="p-3 space-y-2 flex-1">
                             <div>
-                              <div className="text-xs font-medium text-blue-400 mb-2 uppercase tracking-wide">
-                                Input
+                              <div className="text-sm font-extrabold hot-pink mb-0.5 uppercase tracking-wide flex items-center">
+                                <span>Input</span>
+                                <span className="relative inline-flex items-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => flashCopied(`ex-${i}-in`, example.input)}
+                                    className="ml-0.5 p-0 bg-transparent hover:bg-transparent focus:bg-transparent border-none outline-none ring-0 rounded inline-flex items-center hot-pink opacity-90 hover:opacity-100"
+                                    title="Copy input"
+                                    aria-label={`Copy input for test case ${i + 1}`}
+                                  >
+                                    {copied[`ex-${i}-in`] ? (
+                                      <Check className="w-1 h-1 hot-pink transform scale-50" />
+                                    ) : (
+                                      <Copy className="w-1 h-1 transform scale-50 hot-pink" />
+                                    )}
+                                  </button>
+                                  {copied[`ex-${i}-in`] && (
+                                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 animate-scale-in">
+                                      <Check className="w-2 h-2 hot-pink transform scale-50" />
+                                    </span>
+                                  )}
+                                </span>
                               </div>
-                              <div className="code-block">
+                              <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">
                                 {example.input}
                               </div>
                             </div>
-                            
+
                             <div>
-                              <div className="text-xs font-medium text-emerald-400 mb-2 uppercase tracking-wide">
-                                Output
+                              <div className="text-sm font-extrabold hot-pink mb-0.5 uppercase tracking-wide flex items-center">
+                                <span>Output</span>
+                                <span className="relative inline-flex items-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => flashCopied(`ex-${i}-out`, example.output)}
+                                    className="ml-0.5 p-0 bg-transparent hover:bg-transparent focus:bg-transparent border-none outline-none ring-0 rounded inline-flex items-center hot-pink opacity-90 hover:opacity-100"
+                                    title="Copy output"
+                                    aria-label={`Copy output for test case ${i + 1}`}
+                                  >
+                                    {copied[`ex-${i}-out`] ? (
+                                      <Check className="w-1 h-1 hot-pink transform scale-50" />
+                                    ) : (
+                                      <Copy className="w-1 h-1 transform scale-50 hot-pink" />
+                                    )}
+                                  </button>
+                                  {copied[`ex-${i}-out`] && (
+                                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 animate-scale-in">
+                                      <Check className="w-2 h-2 hot-pink transform scale-50" />
+                                    </span>
+                                  )}
+                                </span>
                               </div>
-                              <div className="code-block">
+                              <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">
                                 {example.output}
                               </div>
                             </div>
-                            
+
                             {example.explanation && (
                               <div>
-                                <div className="text-xs font-medium text-purple-400 mb-2 uppercase tracking-wide">
+                                <div className="text-[11px] font-extrabold text-pink-500 mb-0.5 uppercase tracking-wide">
                                   Explanation
                                 </div>
-                                <p className="text-slate-300 text-sm">
+                                <p className="text-slate-100 text-[11px] leading-snug whitespace-pre-wrap break-words">
                                   {example.explanation}
                                 </p>
                               </div>
@@ -312,105 +492,36 @@ export default function ProblemEditor() {
                     </div>
                   </div>
 
-                  {/* Constraints */}
-                  <div className="space-y-3">
-                    <h3 className="text-lg font-semibold text-slate-100 flex items-center">
-                      <Settings className="w-5 h-5 mr-2 text-purple-400" />
-                      Constraints
-                    </h3>
-                    <ul className="space-y-2">
-                      {problem.constraints.map((constraint, i) => (
-                        <li key={i} className="flex items-start">
-                          <ChevronRight className="w-4 h-4 text-slate-500 mr-2 mt-0.5 flex-shrink-0" />
-                          <code className="text-slate-300 text-sm font-mono">
-                            {constraint}
-                          </code>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'editorial' && (
-                <div className="text-center py-12">
-                  <Lightbulb className="w-12 h-12 mx-auto text-yellow-400 mb-4" />
-                  <h3 className="text-lg font-semibold text-slate-200 mb-2">
-                    Editorial Coming Soon
-                  </h3>
-                  <p className="text-slate-400">
-                    Detailed solution explanations will be available soon.
-                  </p>
-                </div>
-              )}
-
-              {activeTab === 'discussions' && (
-                <div className="text-center py-12">
-                  <Trophy className="w-12 h-12 mx-auto text-purple-400 mb-4" />
-                  <h3 className="text-lg font-semibold text-slate-200 mb-2">
-                    Join the Discussion
-                  </h3>
-                  <p className="text-slate-400">
-                    Community discussions and solutions coming soon.
-                  </p>
-                </div>
-              )}
+                  {/* Constraints moved to editor initial comments; left-panel block removed */}
+              </div>
             </Card>
           </div>
 
-          {/* Right Panel - Code Editor */}
-          <div className="lg:col-span-3 space-y-6">
+          {/* Bottom Panel - Editor and Test Results (auto height, page scrolls) */}
+          <div className="flex flex-col gap-6">
             {/* Enhanced Code Editor */}
-            <Card className="glass-card overflow-hidden">
+            <Card className="glass-card overflow-visible flex flex-col">
               {/* Editor Header with Language Selection */}
               <div className="bg-gradient-to-r from-slate-800/50 to-slate-700/50 px-6 py-4 border-b border-slate-700/50">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="flex items-center space-x-2">
-                      <Code2 className="w-5 h-5 text-blue-400" />
-                      <span className="text-lg font-semibold text-slate-200">
-                        Code Editor
-                      </span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="badge badge-tag">
-                        Python 3
-                      </span>
-                      <select 
-                        className="bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-1 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                        title="Select programming language"
-                      >
-                        <option>Python 3</option>
-                        <option>JavaScript</option>
-                        <option>Java</option>
-                        <option>C++</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-3">
-                    <div className="text-sm text-slate-400">
-                      Font: {fontSize}px
-                    </div>
-                    <Button
-                      onClick={() => setFontSize(fontSize === 14 ? 16 : fontSize === 16 ? 18 : 14)}
-                      className="bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 border border-slate-600/50 px-3 py-2 text-sm"
-                    >
-                      <Settings className="w-4 h-4" />
-                    </Button>
+                  <div className="flex items-center space-x-2">
+                    <Code2 className="w-5 h-5 text-blue-400" />
+                    <span className="text-lg font-semibold text-slate-200">Code Editor</span>
+                    <span className="badge badge-tag">Python</span>
                   </div>
                 </div>
               </div>
 
-              {/* Monaco Editor */}
-              <div className="h-[550px] bg-slate-900/95 backdrop-blur-sm">
+              {/* Monaco Editor (fills remaining vertical space between header and footer) */}
+              <div className="bg-slate-900/95 backdrop-blur-sm">
                 <Editor
-                  height="100%"
+                  // Height driven by content so editor does not show scrollbars
+                  height={String(editorHeight)}
                   defaultLanguage="python"
                   value={code}
                   theme="vs-dark"
                   options={{
-                    fontSize: fontSize,
+                    fontSize: editorFontSize,
                     fontFamily: '"JetBrains Mono", "Fira Code", monospace',
                     fontLigatures: true,
                     minimap: { enabled: false },
@@ -427,59 +538,149 @@ export default function ProblemEditor() {
                     cursorBlinking: "phase",
                     cursorSmoothCaretAnimation: "on",
                     glyphMargin: false,
-                    scrollbar: {
-                      vertical: 'auto',
-                      horizontal: 'auto',
-                      verticalScrollbarSize: 8,
-                      horizontalScrollbarSize: 8
-                    },
+                    scrollbar: { vertical: 'hidden', horizontal: 'hidden' },
+                    scrollBeyondLastColumn: 0,
                     overviewRulerBorder: false,
+                    overviewRulerLanes: 0,
                     lineDecorationsWidth: 0,
                     colorDecorators: true,
                     wordWrap: "on",
                     tabSize: 4,
                     insertSpaces: true,
-                    automaticLayout: true
+                    automaticLayout: true,
+                    renderWhitespace: 'none'
                   }}
                   onChange={(value) => setCode(value || "")}
+                  onMount={(editor, monaco) => {
+                    editorRef.current = editor;
+                    monacoRef.current = monaco;
+                    // initial resize
+                    setTimeout(resizeEditorToContent, 20);
+                    editor.onDidContentSizeChange(() => {
+                      resizeEditorToContent();
+                    });
+                    // Keep a snapshot of valid code (used when reverting illegal edits)
+                    try {
+                      lastValidCodeRef.current = editor.getValue();
+                      protectedEndOffsetRef.current = initialCode.length;
+                    } catch {}
+
+                    // Block edits inside the protected constraints header
+                    try {
+                      editor.onDidChangeModelContent((ev: any) => {
+                        if (isRevertingRef.current) return;
+                        const model = editor.getModel?.();
+                        if (!model) return;
+                        const protectedEnd = protectedEndOffsetRef.current ?? 0;
+                        const violates = (ev?.changes ?? []).some((ch: any) => ch.rangeOffset < protectedEnd);
+                        if (violates) {
+                          // Revert to last valid content and place cursor at the first editable position
+                          try {
+                            isRevertingRef.current = true;
+                            model.setValue(lastValidCodeRef.current);
+                            const pos = model.getPositionAt(protectedEnd);
+                            editor.setPosition(pos);
+                          } finally {
+                            isRevertingRef.current = false;
+                          }
+                          return;
+                        }
+                        // Accept change: update valid snapshot
+                        lastValidCodeRef.current = model.getValue();
+                      });
+                    } catch {}
+
+                    // Forward wheel events to window when editor has no internal scroll,
+                    // so page scrolling continues even when the cursor is over the editor.
+                    try {
+                      const domNode = editor.getDomNode?.();
+                      if (domNode) {
+                        const wheelHandler = (ev: WheelEvent) => {
+                          // Determine if the editor can scroll internally
+                          const info = editor.getLayoutInfo?.();
+                          const scrollHeight = editor.getScrollHeight?.();
+                          const canScrollInternally = !!(info && scrollHeight && scrollHeight > info.height);
+                          if (!canScrollInternally) {
+                            // Forward scrolling to the page
+                            window.scrollBy({ top: ev.deltaY, left: 0, behavior: 'auto' });
+                            ev.preventDefault();
+                          }
+                        };
+                        domNode.addEventListener('wheel', wheelHandler, { passive: false });
+                        wheelUnsubscribeRef.current = () => domNode.removeEventListener('wheel', wheelHandler as any);
+                      }
+                    } catch {
+                      // ignore
+                    }
+                  }}
                 />
               </div>
 
               {/* Editor Action Buttons */}
-              <div className="px-6 py-4 bg-gradient-to-r from-slate-800/30 to-slate-700/30 border-t border-slate-700/50">
-                <div className="flex items-center justify-between">
-                  <Button 
-                    onClick={() => setShowHint(!showHint)}
-                    className="bg-gradient-to-r from-yellow-500/20 to-amber-500/20 hover:from-yellow-500/30 hover:to-amber-500/30 text-yellow-300 border border-yellow-500/30 px-4 py-2 text-sm backdrop-blur-sm"
-                  >
-                    <Lightbulb className="w-4 h-4 mr-2" />
-                    {showHint ? 'Hide Hint' : 'Get Hint'}
-                  </Button>
-
-                  <div className="flex items-center space-x-3">
+              <div className="px-6 py-5 bg-gradient-to-r from-slate-800/30 to-slate-700/30 border-t border-slate-700/50">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <Button
-                      onClick={runCode}
-                      disabled={running}
-                      className={`bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 border border-emerald-500/30 px-6 py-2 text-sm backdrop-blur-sm ${running ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      variant="hint"
+                      onClick={() => setShowHint(!showHint)}
+                      className="rounded-full px-5 py-2.5 text-sm md:text-base backdrop-blur-md transition-all btn-hint"
+                      title={showHint ? 'Hide hint' : 'Show hint'}
+                      aria-label={showHint ? 'Hide hint' : 'Show hint'}
                     >
-                      {running ? (
+                      <Lightbulb className="w-4 h-4 md:w-5 md:h-5 mr-2" />
+                      {showHint ? 'Hide Hint' : 'Hint'}
+                    </Button>
+
+                    <Button
+                      variant="run"
+                      onClick={onClickRun}
+                      disabled={runningRaw}
+                      className={`rounded-full px-6 py-2.5 text-sm md:text-base backdrop-blur-md transition-all ${runningRaw ? 'opacity-70 cursor-not-allowed' : ''}`}
+                      title="Run your code (print/output shown below)"
+                      aria-label="Run code"
+                    >
+                      {runningRaw ? (
                         <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          <Loader2 className="w-4 h-4 md:w-5 md:h-5 mr-2 animate-spin" />
                           Running...
                         </>
                       ) : (
                         <>
-                          <Play className="w-4 h-4 mr-2" />
+                          <Play className="w-4 h-4 md:w-5 md:h-5 mr-2" />
                           Run
                         </>
                       )}
                     </Button>
-                    
-                    <Button 
-                      className="bg-gradient-to-r from-blue-500/20 to-purple-500/20 hover:from-blue-500/30 hover:to-purple-500/30 text-blue-300 border border-blue-500/30 px-6 py-2 text-sm backdrop-blur-sm" 
-                      onClick={submitCode}
+
+                    <Button
+                      variant="check"
+                      onClick={runCode}
+                      disabled={running}
+                      className={`rounded-full px-6 py-2.5 text-sm md:text-base backdrop-blur-md transition-all btn-check ${running ? 'opacity-70 cursor-not-allowed' : ''}`}
+                      title="Check your solution against sample tests"
+                      aria-label="Check solution"
                     >
-                      <Send className="w-4 h-4 mr-2" />
+                      {running ? (
+                        <>
+                          <Loader2 className="w-4 h-4 md:w-5 md:h-5 mr-2 animate-spin" />
+                          Checking...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4 md:w-5 md:h-5 mr-2" />
+                          Check
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      variant="submit"
+                      className="rounded-full px-6 py-2.5 text-sm md:text-base backdrop-blur-md transition-all btn-submit"
+                      onClick={submitCode}
+                      title="Submit your solution"
+                      aria-label="Submit solution"
+                    >
+                      <Send className="w-4 h-4 md:w-5 md:h-5 mr-2" />
                       Submit
                     </Button>
                   </div>
@@ -488,11 +689,11 @@ export default function ProblemEditor() {
                 {showHint && (
                   <div className="mt-4 p-4 bg-gradient-to-r from-yellow-500/10 to-amber-500/10 border border-yellow-500/20 rounded-xl animate-slide-up">
                     <div className="flex items-start space-x-3">
-                      <Lightbulb className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
+          <Lightbulb className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
                       <div>
                         <h4 className="text-sm font-semibold text-yellow-300 mb-2">💡 Hint</h4>
                         <p className="text-sm text-slate-300 leading-relaxed">
-                          {problem.hint}
+            {prob.hint ?? "Try to derive a simpler/brute-force solution and then optimize it."}
                         </p>
                       </div>
                     </div>
@@ -501,8 +702,63 @@ export default function ProblemEditor() {
               </div>
             </Card>
 
-            {/* Enhanced Test Results */}
-            <Card className="glass-card p-8">
+            {/* Enhanced Test Results (in the bottom panel) */}
+            {/* Run Output Panel */}
+            {(showRunPanel || runOutput || runError) && (
+              <Card className="glass-card p-6 overflow-visible">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Play className="w-5 h-5 text-blue-400" />
+                    <h3 className="text-lg font-semibold text-slate-100">Run Output</h3>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="hot-pink mb-1 font-semibold flex items-center">
+                        <span>Input</span>
+                      </div>
+                      <span className="text-[11px] text-slate-400">Enter to run • Shift+Enter for newline</span>
+                    </div>
+                    <div className="rounded-lg p-1">
+                      <textarea
+                        ref={runInputRef}
+                        value={runInput}
+                        onChange={(e) => { setRunInput(e.target.value); autoresizeRunInput(); }}
+                        onInput={autoresizeRunInput}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            runRaw(runInput);
+                          }
+                        }}
+                        rows={1}
+                        placeholder="Type input for input() calls"
+                        className="w-full resize-none bg-transparent border-none px-2 py-1 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  {runOutput && (
+                    <div className="space-y-1">
+                      <div className="hot-pink mb-1 font-semibold flex items-center">
+                        <span>Output</span>
+                      </div>
+                      <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words px-0 py-0">
+                        {runOutput || '\u00A0'}
+                      </div>
+                    </div>
+                  )}
+                  {runError && (
+                    <div className="mt-2 space-y-1">
+                      <div className="text-red-400 text-xs font-semibold mb-1">Error</div>
+                      <div className="code-block text-xs p-2 bg-red-500/10 border border-red-500/30 rounded whitespace-pre-wrap break-words">
+                        {runError}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
+            <Card className="glass-card p-8 overflow-visible">
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
@@ -547,71 +803,99 @@ export default function ProblemEditor() {
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {problem.examples.map((example, i) => {
+          <div className="flex gap-4 w-full overflow-visible">
+                      {(prob.examples ?? []).map((example, i) => {
                         const status = testStatuses[i] ?? 0;
+                        const passed = status === 1;
+                        const failed = status === 2;
                         return (
                           <Card
                             key={i}
-                            className={`p-4 transition-all duration-300 hover:scale-105 ${
-                              status === 0 ? 'bg-slate-800/50 border-slate-600/50' :
-                              status === 1 ? 'bg-emerald-500/10 border-emerald-500/30 shadow-emerald-500/20 shadow-lg' : 
-                              'bg-red-500/10 border-red-500/30 shadow-red-500/20 shadow-lg'
+                            className={`rounded-xl overflow-hidden min-h-[130px] flex-1 min-w-0 flex flex-col transition-none hover:shadow-none testcase-nohover ${
+                              status === 0
+                                ? 'bg-slate-900/50 border-slate-600/50 hover:border-slate-600/50'
+                                : passed
+                                ? 'testcase-pass'
+                                : 'testcase-fail'
                             }`}
                           >
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium text-slate-200">
-                                  Test Case {i + 1}
-                                </span>
-                                <div className="flex items-center space-x-2">
-                                  {status === 0 && <Timer className="w-4 h-4 text-slate-400" />}
-                                  {status === 1 && <Check className="w-4 h-4 text-emerald-400" />}
-                                  {status === 2 && <X className="w-4 h-4 text-red-400" />}
-                                  <span className={`text-sm font-medium ${
-                                    status === 0 ? 'text-slate-400' :
-                                    status === 1 ? 'text-emerald-400' : 'text-red-400'
-                                  }`}>
-                                    {status === 0 ? 'Pending' :
-                                     status === 1 ? '✅ Passed' : '❌ Failed'}
+                            <div className={`px-3 py-1.5 border-b ${
+                              passed ? 'border-emerald-500/30' : failed ? 'border-red-500/30' : 'border-slate-700/60'
+                            }`}>
+                              <span className="text-xs font-extrabold uppercase tracking-wide text-pink-500">
+                                Test Case {i + 1}
+                              </span>
+                            </div>
+
+                            <div className="p-3 space-y-2 flex-1">
+                              <div>
+                                <div className="text-sm font-extrabold hot-pink mb-0.5 uppercase tracking-wide flex items-center">
+                                  <span>Input</span>
+                                  <span className="relative inline-flex items-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => flashCopied(`tr-${i}-in`, example.input)}
+                                      className="ml-0.5 p-0 bg-transparent hover:bg-transparent focus:bg-transparent border-none outline-none ring-0 rounded inline-flex items-center hot-pink opacity-90 hover:opacity-100"
+                                      title="Copy input"
+                                      aria-label={`Copy input for test case ${i + 1}`}
+                                    >
+                                      {copied[`tr-${i}-in`] ? (
+                                        <Check className="w-1 h-1 hot-pink transform scale-50" />
+                                      ) : (
+                                        <Copy className="w-1 h-1 transform scale-50 hot-pink" />
+                                      )}
+                                    </button>
+                                    {copied[`tr-${i}-in`] && (
+                                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 animate-scale-in">
+                                        <Check className="w-2 h-2 hot-pink transform scale-50" />
+                                      </span>
+                                    )}
                                   </span>
                                 </div>
+                                <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">
+                                  {example.input}
+                                </div>
                               </div>
-                              
-                              <div className="space-y-2 text-xs">
+
+                              <div>
+                                <div className="text-sm font-extrabold hot-pink mb-0.5 uppercase tracking-wide flex items-center">
+                                  <span>{failed ? 'Expected Output' : 'Output'}</span>
+                                  <span className="relative inline-flex items-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => flashCopied(`tr-${i}-out`, example.output)}
+                                      className="ml-0.5 p-0 bg-transparent hover:bg-transparent focus:bg-transparent border-none outline-none ring-0 rounded inline-flex items-center hot-pink opacity-90 hover:opacity-100"
+                                      title={failed ? 'Copy expected output' : 'Copy output'}
+                                      aria-label={`Copy output for test case ${i + 1}`}
+                                    >
+                                      {copied[`tr-${i}-out`] ? (
+                                        <Check className="w-1 h-1 hot-pink transform scale-50" />
+                                      ) : (
+                                        <Copy className="w-1 h-1 transform scale-50 hot-pink" />
+                                      )}
+                                    </button>
+                                    {copied[`tr-${i}-out`] && (
+                                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 animate-scale-in">
+                                        <Check className="w-2 h-2 hot-pink transform scale-50" />
+                                      </span>
+                                    )}
+                                  </span>
+                                </div>
+                                <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">
+                                  {example.output}
+                                </div>
+                              </div>
+
+                              {failed && (
                                 <div>
-                                  <div className="text-slate-500 mb-1 font-semibold">Input:</div>
-                                  <div className="code-block text-xs p-2 bg-slate-900/50">
-                                    {example.input}
+                                  <div className="text-sm font-extrabold text-red-400 mb-0.5 uppercase tracking-wide">
+                                    Your Output
+                                  </div>
+                                  <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">
+                                    {userOutputs[i] || ''}
                                   </div>
                                 </div>
-                                <div>
-                                  <div className="text-slate-500 mb-1 font-semibold">Expected:</div>
-                                  <div className="code-block text-xs p-2 bg-slate-900/50">
-                                    {example.output}
-                                  </div>
-                                </div>
-                                {status === 1 && (
-                                  <div className="mt-2 p-2 bg-emerald-500/10 rounded border border-emerald-500/20">
-                                    <div className="text-emerald-400 text-xs font-semibold mb-1">✅ Status:</div>
-                                    <div className="text-emerald-300 text-xs">Test passed successfully! Output matches expected result.</div>
-                                  </div>
-                                )}
-                                {status === 2 && (
-                                  <div className="mt-2 space-y-2">
-                                    <div>
-                                      <div className="text-red-400 mb-1 font-semibold">Your Output:</div>
-                                      <div className="code-block text-xs p-2 bg-red-500/10 border border-red-500/20">
-                                        Runtime Error: Solution not implemented
-                                      </div>
-                                    </div>
-                                    <div className="p-2 bg-red-500/10 rounded border border-red-500/20">
-                                      <div className="text-red-400 text-xs font-semibold mb-1">❌ Feedback:</div>
-                                      <div className="text-red-300 text-xs">Please implement your solution in the twoSum method.</div>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
+                              )}
                             </div>
                           </Card>
                         );
@@ -639,7 +923,7 @@ export default function ProblemEditor() {
                       Ready to test your code?
                     </h4>
                     <p className="text-slate-400">
-                      Click the &quot;Run&quot; button to execute your solution against the test cases.
+                      Click the &quot;Check&quot; button to execute your solution against the test cases.
                     </p>
                   </div>
                 )}

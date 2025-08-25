@@ -1,130 +1,86 @@
-# Competitive Programming Platform
+<div align="center">
 
-A modern, AI-enhanced competitive programming website built with Next.js, TypeScript, and Monaco Editor.
+# CodeSage
 
-## Features
+An AI‑assisted competitive programming platform built with Next.js, TypeScript, Tailwind, and Monaco Editor.
 
-- **Monaco Editor Integration**: Professional code editor with Python syntax highlighting
-- **Problem Display**: Clear problem statements with difficulty levels and tags
-- **Test Cases**: Visual representation of input/output with explanations
-- **Responsive Design**: Mobile-first approach with Tailwind CSS
-- **Modern UI**: Built with Shadcn UI components for consistent design
-- **TypeScript**: Full type safety and better development experience
+[Website](https://github.com/nada-baydoun/CodeSage) • [Issues](https://github.com/nada-baydoun/CodeSage/issues) • [Pull Requests](https://github.com/nada-baydoun/CodeSage/pulls)
+
+</div>
+
+## Highlights
+
+- Modern Next.js 15 app router with React 19
+- Monaco Editor with Python syntax and client‑side execution via Pyodide
+- Clean problem pages with difficulty, tags, examples, and test cases
+- Shadcn/Radix UI + Tailwind for a responsive, accessible UI
+- TypeScript end‑to‑end
 
 ## Tech Stack
 
-- **Frontend**: Next.js 15 with App Router
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **UI Components**: Shadcn UI + Radix UI
-- **Code Editor**: Monaco Editor (VS Code's editor)
-- **State Management**: React hooks (useState, useEffect)
+- Framework: Next.js 15 (App Router)
+- Language: TypeScript
+- UI: Tailwind CSS, shadcn/ui, Radix UI
+- Editor: Monaco Editor
+- Python Runtime (browser): Pyodide
 
-## Getting Started
+## Quick Start
 
-### Prerequisites
+Prerequisites
+- Node.js 18+
+- npm 9+
 
-- Node.js 18+ 
-- npm or yarn
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd startup
-```
-
-2. Install dependencies:
-```bash
+Setup
+```powershell
+git clone https://github.com/nada-baydoun/CodeSage.git
+cd CodeSage
 npm install
-```
-
-3. Run the development server:
-```bash
 npm run dev
 ```
 
-4. Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open http://localhost:3000
 
 ## Project Structure
 
 ```
 src/
-├── app/
-│   ├── globals.css          # Global styles and custom CSS
-│   ├── layout.tsx           # Root layout component
-│   └── page.tsx             # Main page component
-├── components/
-│   ├── ui/                  # Shadcn UI components
-│   │   ├── button.tsx
-│   │   ├── card.tsx
-│   │   └── badge.tsx
-│   └── ProblemEditor.tsx    # Main problem editor component
-└── lib/
-    └── utils.ts             # Utility functions
+├─ app/
+│  ├─ globals.css        # Global styles
+│  ├─ layout.tsx         # Root layout
+│  └─ page.tsx           # Landing / home
+├─ components/
+│  ├─ ui/                # Reusable UI components (shadcn)
+│  └─ ProblemEditor.tsx  # Editor with Monaco + problem view
+├─ lib/
+│  ├─ pyRunner.ts        # Pyodide loader + runner utilities
+│  └─ utils.ts
+└─ public/
+    └─ data/              # Problem metadata and samples
 ```
-
-## Current Implementation
-
-### Problem Editor Component
-
-The `ProblemEditor` component includes:
-
-- **Problem Information**: Name, difficulty level, and tags
-- **Problem Description**: Full problem statement with examples and constraints
-- **Test Cases**: Input/output pairs with explanations
-- **Monaco Editor**: Python code editor with syntax highlighting
-- **Action Buttons**: Hint and Submit buttons (functionality to be implemented)
-
-### Sample Problem
-
-Currently displays the "Two Sum" problem as a demonstration:
-- Easy difficulty level
-- Array, Hash Table, and Two Pointers tags
-- Complete problem description with examples
-- Three test cases with explanations
-
-## Next Steps
-
-The following features are planned for future implementation:
-
-1. **Hint System**: AI-powered hints and guidance
-2. **Code Submission**: Code execution and testing
-3. **Problem Database**: Multiple problems with different difficulty levels
-4. **User Authentication**: User accounts and progress tracking
-5. **Leaderboard**: Competition and ranking system
-6. **AI Code Review**: Automated feedback and suggestions
 
 ## Development
 
-### Code Style
+Common scripts
+- Start dev server: `npm run dev`
+- Lint: `npm run lint`
+- Build: `npm run build`
+- Start production: `npm start`
 
-- Follows Standard.js rules
-- Uses functional components with hooks
-- Implements proper TypeScript types
-- Follows React best practices
-
-### Adding New Problems
-
-To add new problems, modify the `sampleProblem` object in `ProblemEditor.tsx` or create a problems database.
-
-### Styling
-
-The project uses Tailwind CSS with custom CSS variables. Custom styles are defined in `globals.css`.
+Notes
+- Pyodide is loaded on demand in the browser (see `src/lib/pyRunner.ts`).
+- Problems and descriptions live in `public/data`.
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+Contributions are welcome! Please see `CONTRIBUTING.md` for guidelines. By participating, you agree to abide by the `CODE_OF_CONDUCT.md`.
+
+## Roadmap
+
+- [ ] Auth and progress tracking
+- [ ] Rich hinting and AI assistance
+- [ ] Leaderboards and contests
+- [ ] More languages (server‑side execution)
 
 ## License
 
-This project is licensed under the MIT License.
-
-## Support
-
-For questions or support, please open an issue in the repository.
+MIT © Nada Baydoun. See `LICENSE` for details.

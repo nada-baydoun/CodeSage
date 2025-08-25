@@ -1,9 +1,33 @@
 {
-  "name": "startup",
+  "name": "codesage",
+  "description": "AI-assisted competitive programming platform built with Next.js, TypeScript, Tailwind, Monaco, and Pyodide.",
   "version": "0.1.0",
   "private": true,
+  "author": "Nada Baydoun",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nada-baydoun/CodeSage.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nada-baydoun/CodeSage/issues"
+  },
+  "homepage": "https://github.com/nada-baydoun/CodeSage#readme",
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "nextjs",
+    "competitive-programming",
+    "monaco",
+    "pyodide",
+    "typescript",
+    "tailwind",
+    "shadcn"
+  ],
   "scripts": {
     "dev": "next dev --turbopack",
+    "dev:legacy": "next dev",
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint"
