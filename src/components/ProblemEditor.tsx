@@ -1,5 +1,6 @@
 "use client";
 import React, { useMemo, useState, useRef, useEffect } from "react";
+import type { editor as MonacoEditorNS } from "monaco-editor";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import Editor from "@monaco-editor/react";
@@ -151,21 +152,7 @@ ${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
   // Fixed editor font size (no user controls to change it)
   const editorFontSize = 16;
   const [copied, setCopied] = useState<Record<string, boolean>>({});
-  type MonacoEditorLike = {
-    getContentHeight?: () => number;
-    getLayoutInfo: () => { width: number; height?: number };
-    layout: (opts: { width: number; height: number }) => void;
-    onDidContentSizeChange: (cb: () => void) => void;
-    getModel?: () => {
-      getValue: () => string;
-      setValue: (v: string) => void;
-      getPositionAt: (offset: number) => unknown;
-    } | null;
-    setPosition: (pos: unknown) => void;
-    getDomNode?: () => HTMLElement | null;
-    getScrollHeight?: () => number;
-  };
-  const editorRef = useRef<MonacoEditorLike | null>(null);
+  const editorRef = useRef<MonacoEditorNS.IStandaloneCodeEditor | null>(null);
   const [editorHeight, setEditorHeight] = useState<string | number>('800px');
   // Cleanup for wheel forwarding listener
   const wheelUnsubscribeRef = useRef<(() => void) | null>(null);
