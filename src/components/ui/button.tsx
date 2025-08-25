@@ -23,6 +23,16 @@ const buttonVariants = cva(
           "text-blue-400 underline-offset-4 hover:underline hover:text-blue-300",
         success:
           "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg hover:shadow-xl hover:shadow-emerald-500/25",
+        hint:
+          "text-slate-900 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 shadow-lg hover:shadow-xl shadow-amber-500/25 border border-amber-400/40",
+        check:
+          "text-white bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 shadow-lg hover:shadow-xl shadow-purple-500/25 border border-purple-400/40",
+        run:
+          "text-white bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 shadow-lg hover:shadow-xl shadow-pink-500/25 border border-pink-400/40",
+        submit:
+          "text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 shadow-lg hover:shadow-xl shadow-emerald-500/25 border border-emerald-400/40",
+        custom:
+          "",
       },
       size: {
         default: "h-11 px-6 py-3 has-[>svg]:px-5",
@@ -53,7 +63,7 @@ function Button({
   return (
     <Comp
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+  className={cn(buttonVariants({ variant, size }), className)}
       {...props}
     />
   )
