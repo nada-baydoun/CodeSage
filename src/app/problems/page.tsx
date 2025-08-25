@@ -5,11 +5,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Code2, Settings, User, Search,
-  Eye, PencilLine, CheckCircle2, XCircle,
-  ChevronUp, ChevronDown, Filter, Circle
-} from "lucide-react";
+import { Code2, Settings, User, Search, ChevronUp, ChevronDown, Filter } from "lucide-react";
 
 // ==== Types (matches your problemset JSON) ====
 type Problem = {
@@ -48,30 +44,10 @@ function saveStatus(id: string, s: Status) {
 }
 
 // ==== Difficulty helpers ====
-function ratingHue(r: number) {
-  const min = 800, max = 3500;
-  const t = Math.min(Math.max((r - min) / (max - min), 0), 1);
-  return 120 * (1 - t);
-}
-function ratingChipStyle(r: number) {
-  const hue = ratingHue(r);
-  return {
-    backgroundColor: `hsl(${hue} 70% 18%)`,
-    border: `1px solid hsl(${hue} 70% 35%)`,
-    color: `hsl(${hue} 85% 82%)`,
-  } as React.CSSProperties;
-}
 function ratingBand(r: number) {
   if (r <= 1200) return "Easy";
   if (r <= 1900) return "Medium";
   return "Hard";
-}
-function getRatingClass(rating: number) {
-  if (rating <= 1200) return "rating-easy";
-  if (rating <= 1600) return "rating-medium";
-  if (rating <= 2000) return "rating-hard";
-  if (rating <= 2400) return "rating-expert";
-  return "rating-master";
 }
 
 // Heatmap class mapping: buckets every 100 from 800..3500
@@ -143,29 +119,7 @@ function statusExplanation(s: Status) {
 }
 
 // Clickable status icon that cycles
-function ClickableStatusIcon({ id, value, onChange }:{id:string; value:Status; onChange:(s:Status)=>void}) {
-  const statusCycle: Status[] = ["none", "viewed", "tried", "accepted", "rejected"];
-  const handleClick = () => {
-    const currentIndex = statusCycle.indexOf(value);
-    const nextIndex = (currentIndex + 1) % statusCycle.length;
-    onChange(statusCycle[nextIndex]);
-  };
-  const getNextStatusName = () => {
-    const currentIndex = statusCycle.indexOf(value);
-    const nextIndex = (currentIndex + 1) % statusCycle.length;
-    return ["Not tried","Viewed","Tried","Accepted","Rejected"][nextIndex];
-  };
-  return (
-    <button
-      onClick={handleClick}
-      className="p-1 transition-all duration-200 hover:scale-110 bg-transparent border-none outline-none focus:outline-none focus:ring-0"
-      title={`Click to mark as: ${getNextStatusName()}`}
-      type="button"
-    >
-      <StatusIcon status={value} />
-    </button>
-  );
-}
+// ClickableStatusIcon (unused in current layout) removed to keep lint clean
 
 export default function ProblemsPage() {
   const [problems, setProblems] = useState<Problem[]>([]);
@@ -280,7 +234,7 @@ export default function ProblemsPage() {
                 <span className="text-xl font-bold gradient-text">CodeSage</span>
               </Link>
               <nav className="hidden md:flex space-x-6">
-                <a href="/problems" className="text-blue-400 font-medium text-sm uppercase tracking-wide">Problems</a>
+                <Link href="/problems" className="text-blue-400 font-medium text-sm uppercase tracking-wide">Problems</Link>
                 <a href="#" className="text-slate-300 hover:text-blue-400 transition-colors text-sm uppercase tracking-wide">Contests</a>
                 <a href="#" className="text-slate-300 hover:text-blue-400 transition-colors text-sm uppercase tracking-wide">Learn</a>
                 <a href="#" className="text-slate-300 hover:text-blue-400 transition-colors text-sm uppercase tracking-wide">Discuss</a>
@@ -542,9 +496,9 @@ export default function ProblemsPage() {
             <div className="mb-6 flex flex-wrap items-center gap-3 text-sm">
               <span className="text-white/80">Filters:</span>
               {searchTerm && (
-                <span className="px-2 py-1 bg-blue-500/20 text-white rounded-lg">
-                  Search: "{searchTerm}"
-                </span>
+                  <span className="px-2 py-1 bg-blue-500/20 text-white rounded-lg">
+                    Search: &quot;{searchTerm}&quot;
+                  </span>
               )}
               {selectedTags.length > 0 && (
                 <div className="flex flex-wrap gap-2 items-center">
