@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Code2, Settings, User, Search, ChevronUp, ChevronDown, Filter } from "lucide-react";
+import type { Status as ProblemStatus } from "@/lib/status";
+import { loadStatusMap as loadStatusMapShared, setStatus as setStatusShared } from "@/lib/status";
 
 // ==== Types (matches your problemset JSON) ====
 type Problem = {
@@ -18,30 +20,10 @@ type Problem = {
 };
 
 // ==== Local status (MVP via localStorage) ====
-type Status = "viewed" | "tried" | "accepted" | "rejected" | "none";
+type Status = ProblemStatus;
 
-function loadStatusMap(): Record<string, Status> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = JSON.parse(localStorage.getItem("cf-status") || "{}");
-    const allowed: Status[] = ["none", "viewed", "tried", "accepted", "rejected"];
-    const sanitized: Record<string, Status> = {};
-    for (const [k, v] of Object.entries(raw || {})) {
-      const val = allowed.includes(v as Status) ? (v as Status) : "none";
-      sanitized[k] = val === "viewed" ? "none" : val;
-    }
-    try { localStorage.setItem("cf-status", JSON.stringify(sanitized)); } catch {}
-    return sanitized;
-  } catch {
-    return {};
-  }
-}
-function saveStatus(id: string, s: Status) {
-  if (typeof window === "undefined") return;
-  const map = loadStatusMap();
-  map[id] = s;
-  localStorage.setItem("cf-status", JSON.stringify(map));
-}
+const loadStatusMap = (): Record<string, Status> => loadStatusMapShared();
+function saveStatus(id: string, s: Status) { setStatusShared(id, s); }
 
 // ==== Difficulty helpers ====
 function ratingBand(r: number) {

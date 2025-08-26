@@ -4,6 +4,7 @@ import type { editor as MonacoEditorNS } from "monaco-editor";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import Editor from "@monaco-editor/react";
+import Link from "next/link";
 import { 
   Play, 
   Send, 
@@ -20,6 +21,7 @@ import {
   Copy
 } from "lucide-react";
 import { runPythonWithInput, canonicalizeInputSetup, outputsMatch } from "../lib/pyRunner";
+import { upgradeStatus } from "@/lib/status";
 
 // Types for dynamic problem content
 type Example = { input: string; output: string; explanation?: string };
@@ -127,11 +129,22 @@ export default function ProblemEditor({ problem }: { problem?: ProblemContent })
   }, [problem]);
 
   // Editor should start with only commented constraints (no starter code)
+  // Ensure ALL lines are commented, even if a single constraint spans multiple lines.
+  const constraintsLines = (prob.constraints ?? [])
+    .flatMap((c) => String(c).split(/\r?\n/));
   const initialCode = `# Constraints:
-${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
+${constraintsLines.map((line) => `# - ${line}`).join("\n")}
 `;
 
-  const [code, setCode] = useState(initialCode);
+  // Load code from localStorage if available
+  const storageKey = prob?.id ? `cf-code-${prob.id}` : undefined;
+  const [code, setCode] = useState(() => {
+    if (typeof window !== "undefined" && storageKey) {
+      const saved = localStorage.getItem(storageKey);
+      if (saved && typeof saved === "string") return saved;
+    }
+    return initialCode;
+  });
   const [showHint, setShowHint] = useState(false);
   const [running, setRunning] = useState(false);
   const [runningRaw, setRunningRaw] = useState(false);
@@ -160,6 +173,7 @@ ${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
   const protectedEndOffsetRef = useRef<number>(initialCode.length);
   const lastValidCodeRef = useRef<string>(initialCode);
   const isRevertingRef = useRef<boolean>(false);
+  const hasMarkedTriedRef = useRef<boolean>(false);
 
   const flashCopied = (key: string, value: string) => {
     navigator.clipboard.writeText(value);
@@ -244,12 +258,15 @@ ${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
     }
   };
 
-  // Recompute when code changes
+  // Save code to localStorage on change and resize editor
   useEffect(() => {
+    if (typeof window !== "undefined" && storageKey) {
+      try { localStorage.setItem(storageKey, code); } catch {}
+    }
     // small timeout to wait for content updates
     const t = setTimeout(() => resizeEditorToContent(), 40);
     return () => clearTimeout(t);
-  }, [code]);
+  }, [code, storageKey]);
 
   // Cleanup any editor-bound listeners on unmount
   useEffect(() => {
@@ -257,6 +274,12 @@ ${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
       try { wheelUnsubscribeRef.current?.(); } catch {}
     };
   }, []);
+
+  // Mark problem as viewed once loaded on client
+  useEffect(() => {
+    if (!prob?.id) return;
+    try { upgradeStatus(prob.id, "viewed"); } catch {}
+  }, [prob?.id]);
 
   const submitCode = () => {
     alert("🚀 Code submitted successfully! Real submission system coming soon.");
@@ -310,12 +333,12 @@ ${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
           <div className="flex items-center justify-between">
             {/* Logo & Navigation */}
             <div className="flex items-center space-x-8">
-              <div className="flex items-center space-x-3">
+              <Link href="/" className="flex items-center space-x-3 group" title="Go to Home" aria-label="Go to Home">
                 <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                   <Code2 className="w-5 h-5 text-white" />
                 </div>
-                <span className="text-xl font-bold gradient-text">CodeSage</span>
-              </div>
+                <span className="text-xl font-bold gradient-text group-hover:opacity-90">CodeSage</span>
+              </Link>
               
               <nav className="hidden md:flex space-x-6">
                 <a href="#" className="text-blue-400 font-medium text-sm uppercase tracking-wide hover:text-blue-300 transition-colors">
@@ -585,6 +608,15 @@ ${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
                         }
                         // Accept change: update valid snapshot
                         lastValidCodeRef.current = model.getValue();
+
+                        // First valid user edit beyond protected header -> mark as tried
+                        if (!hasMarkedTriedRef.current) {
+                          const anyAfterProtected = (ev?.changes ?? []).some((ch) => ch.rangeOffset >= protectedEnd);
+                          if (anyAfterProtected && prob?.id) {
+                            try { upgradeStatus(prob.id, "tried"); } catch {}
+                            hasMarkedTriedRef.current = true;
+                          }
+                        }
                       });
                     } catch {}
 
@@ -634,7 +666,7 @@ ${(prob.constraints ?? []).map((c) => `# - ${c}`).join("\n")}
                       variant="run"
                       onClick={onClickRun}
                       disabled={runningRaw}
-                      className={`rounded-full px-6 py-2.5 text-sm md:text-base backdrop-blur-md transition-all ${runningRaw ? 'opacity-70 cursor-not-allowed' : ''}`}
+                      className={`rounded-full px-6 py-2.5 text-sm md:text-base backdrop-blur-md transition-all btn-run ${runningRaw ? 'opacity-70 cursor-not-allowed' : ''}`}
                       title="Run your code (print/output shown below)"
                       aria-label="Run code"
                     >

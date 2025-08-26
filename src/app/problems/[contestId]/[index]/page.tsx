@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import ProblemEditor from '@/components/ProblemEditor';
+import { upgradeStatus } from '@/lib/status';
 import { headers } from 'next/headers';
 import Link from 'next/link';
 
@@ -67,7 +68,8 @@ export default async function ProblemPage({ params }: { params: Promise<{ contes
   const { contestId, index } = await params;
   try {
     const problem = await getProblemData(contestId, index);
-    return <ProblemEditor problem={problem} />;
+  // Mark as viewed client-side after hydration (ProblemEditor will perform the call via effect)
+  return <ProblemEditor problem={problem} />;
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to load problem';
     // Fallback minimal page with error

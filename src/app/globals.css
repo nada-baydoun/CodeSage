@@ -1,3 +1,7 @@
+/* Force Run button text color to black */
+.btn-run {
+  color: #000 !important;
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
