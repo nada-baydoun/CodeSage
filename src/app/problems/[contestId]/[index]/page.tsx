@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import ProblemEditor from '@/components/ProblemEditor';
-import { upgradeStatus } from '@/lib/status';
 import { headers } from 'next/headers';
 import Link from 'next/link';
 
