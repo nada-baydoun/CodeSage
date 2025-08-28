@@ -1,2 +1,7 @@
 # Prevent massive JSON assets from being uploaded to Vercel
-public/data/*.json
+# Keep only the small/needed ones (problemset_complete.json, descriptions.json)
+public/data/checker.json
+public/data/checker1.json
+public/data/generations.json
+public/data/prompts.json
+public/data/thinking.json
