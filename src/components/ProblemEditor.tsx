@@ -17,11 +17,14 @@ import {
   X,
   Loader2,
   Lightbulb,
+  LightbulbOff,
   Target,
   Copy
 } from "lucide-react";
 import { runPythonWithInput, canonicalizeInputSetup, outputsMatch } from "../lib/pyRunner";
-import { upgradeStatus } from "@/lib/status";
+import { upgradeStatus, setStatus } from "@/lib/status";
+import { evaluateSubmission, type SubmissionResult } from "@/lib/submissionRunner";
+// Submission results are now rendered inline in the Test Results panel
 
 // Types for dynamic problem content
 type Example = { input: string; output: string; explanation?: string };
@@ -146,6 +149,8 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
     return initialCode;
   });
   const [showHint, setShowHint] = useState(false);
+  const [hintEnabled, setHintEnabled] = useState(false);
+  const [showHintBanner, setShowHintBanner] = useState(true);
   const [running, setRunning] = useState(false);
   const [runningRaw, setRunningRaw] = useState(false);
   const [results, setResults] = useState<string | null>(null);
@@ -167,6 +172,14 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
   const [copied, setCopied] = useState<Record<string, boolean>>({});
   const editorRef = useRef<MonacoEditorNS.IStandaloneCodeEditor | null>(null);
   const [editorHeight, setEditorHeight] = useState<string | number>('800px');
+  
+  // Submission state
+  const [submissionResult, setSubmissionResult] = useState<SubmissionResult | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  // Toggle which results panel is visible: 'check' or 'submission'
+  const [activePanel, setActivePanel] = useState<'check' | 'submission'>('check');
+  
   // Cleanup for wheel forwarding listener
   const wheelUnsubscribeRef = useRef<(() => void) | null>(null);
   // Protect the initial commented constraints from edits
@@ -184,6 +197,8 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
   };
 
   const runCode = async () => {
+  // Switch to Check results panel when running sample tests
+  setActivePanel('check');
     setRunning(true);
     setResults(null);
     const n = (prob.examples ?? []).length;
@@ -281,8 +296,46 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
     try { upgradeStatus(prob.id, "viewed"); } catch {}
   }, [prob?.id]);
 
-  const submitCode = () => {
-    alert("🚀 Code submitted successfully! Real submission system coming soon.");
+  const submitCode = async () => {
+    if (!prob?.id) {
+      alert("No problem loaded. Please try again.");
+      return;
+    }
+    
+  // Show the submission panel immediately
+  setActivePanel('submission');
+    setIsSubmitting(true);
+    setSubmissionError(null);
+    setSubmissionResult(null);
+    
+    try {
+      console.log('🚀 Starting submission for problem:', prob.id);
+      console.log('📝 User code:', code);
+      
+      const result = await evaluateSubmission(prob.id, code, 10);
+      setSubmissionResult(result);
+      // Update overall problem status based on verdict
+      try {
+        setStatus(prob.id, result.accepted ? 'accepted' : 'rejected');
+      } catch {}
+      
+      console.log('✅ Submission completed successfully');
+      console.log('📊 Final result:', result.accepted ? 'ACCEPTED' : 'REJECTED');
+      
+      // Show a brief success message
+      if (result.accepted) {
+        console.log('🎉 Congratulations! Your solution was accepted!');
+      } else {
+        console.log('💪 Keep trying! Your solution needs some adjustments.');
+      }
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setSubmissionError(errorMessage);
+      console.error('❌ Submission failed:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const runRaw = async (inputOverride?: string) => {
@@ -371,6 +424,29 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
           </div>
         </div>
       </header>
+
+      {/* Hints notice banner */}
+      {showHintBanner && (
+        <div className="fixed top-4 right-4 left-auto z-[9999] animate-slide-up hint-banner-fixed">
+          <div className="px-3 py-2 rounded-2xl border border-blue-800 bg-blue-900 shadow-xl w-[10vw] min-w-[220px] hint-banner-card">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2 text-slate-200 min-w-0">
+                <LightbulbOff className="w-4 h-4 text-slate-300 shrink-0" />
+                <span className="text-xs md:text-sm leading-snug break-words">Need help while coding? Press the Hint button to activate hints.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHintBanner(false)}
+                aria-label="Close hints notice"
+                className="p-1.5 rounded-md text-slate-300 bg-transparent hover:bg-transparent focus:bg-transparent border-none outline-none ring-0 focus:ring-0 focus:outline-none"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-6 py-6">
         {/* Problem Header */}
@@ -653,14 +729,38 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
                   <div className="flex items-center gap-3 flex-wrap">
                     <Button
                       variant="hint"
-                      onClick={() => setShowHint(!showHint)}
+                      onClick={() => {
+                        if (!hintEnabled) {
+                          setHintEnabled(true);
+                          setShowHint(true);
+                        } else {
+                          setShowHint(v => !v);
+                        }
+                      }}
                       className="rounded-full px-5 py-2.5 text-sm md:text-base backdrop-blur-md transition-all btn-hint"
-                      title={showHint ? 'Hide hint' : 'Show hint'}
-                      aria-label={showHint ? 'Hide hint' : 'Show hint'}
+                      title={!hintEnabled ? 'Enable hints' : (showHint ? 'Hide hint' : 'Show hint')}
+                      aria-label={!hintEnabled ? 'Enable hints' : (showHint ? 'Hide hint' : 'Show hint')}
                     >
-                      <Lightbulb className="w-4 h-4 md:w-5 md:h-5 mr-2" />
-                      {showHint ? 'Hide Hint' : 'Hint'}
+                      {hintEnabled ? (
+                        <Lightbulb className="w-4 h-4 md:w-5 md:h-5 mr-2 text-yellow-300" />
+                      ) : (
+                        <LightbulbOff className="w-4 h-4 md:w-5 md:h-5 mr-2 text-slate-400" />
+                      )}
+                      {!hintEnabled ? 'Enable Hints' : (showHint ? 'Hide Hint' : 'Show Hint')}
                     </Button>
+
+          {hintEnabled && (
+                      <Button
+            variant="secondary"
+                        onClick={() => { setHintEnabled(false); setShowHint(false); }}
+            className="rounded-full px-4 py-2.5 text-sm md:text-base backdrop-blur-md transition-all btn-deactivate"
+                        title="Deactivate hints"
+                        aria-label="Deactivate hints"
+                      >
+                        <LightbulbOff className="w-4 h-4 md:w-5 md:h-5 mr-2" />
+                        Deactivate
+                      </Button>
+                    )}
 
                     <Button
                       variant="run"
@@ -706,21 +806,31 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
 
                     <Button
                       variant="submit"
-                      className="rounded-full px-6 py-2.5 text-sm md:text-base backdrop-blur-md transition-all btn-submit"
+                      disabled={isSubmitting}
+                      className={`rounded-full px-6 py-2.5 text-sm md:text-base backdrop-blur-md transition-all btn-submit ${isSubmitting ? 'opacity-70 cursor-not-allowed' : ''}`}
                       onClick={submitCode}
                       title="Submit your solution"
                       aria-label="Submit solution"
                     >
-                      <Send className="w-4 h-4 md:w-5 md:h-5 mr-2" />
-                      Submit
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 md:w-5 md:h-5 mr-2 animate-spin" />
+                          Submitting...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 md:w-5 md:h-5 mr-2" />
+                          Submit
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>
 
-                {showHint && (
+        {hintEnabled && showHint && (
                   <div className="mt-4 p-4 bg-gradient-to-r from-yellow-500/10 to-amber-500/10 border border-yellow-500/20 rounded-xl animate-slide-up">
                     <div className="flex items-start space-x-3">
-          <Lightbulb className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
+      <Lightbulb className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
                       <div>
                         <h4 className="text-sm font-semibold text-yellow-300 mb-2">💡 Hint</h4>
                         <p className="text-sm text-slate-300 leading-relaxed">
@@ -790,176 +900,280 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
             )}
 
             <Card className="glass-card p-8 overflow-visible">
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-3 h-3 bg-gradient-to-r from-blue-400 to-purple-400 rounded-full"></div>
-                    <h3 className="text-xl font-semibold text-slate-100">
-                      Test Results
-                    </h3>
+              {/* Switch panel based on explicit state so Check works after Submit */}
+              {activePanel === 'submission' ? (
+                <div className="space-y-8">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-3 h-3 bg-gradient-to-r from-blue-400 to-purple-400 rounded-full"></div>
+                      <h3 className="text-xl font-semibold text-slate-100">Submission Results</h3>
+                    </div>
                   </div>
-                  
-                  {results && (
-                    <div className="flex items-center space-x-4">
-                      <div className="flex items-center space-x-2 text-sm text-slate-400">
-                        <Timer className="w-4 h-4" />
-                        <span>Runtime: 1.2s</span>
+
+                  {/* Loading state */}
+                  {isSubmitting && (
+                    <div className="flex flex-col items-center justify-center py-16">
+                      <Loader2 className="w-10 h-10 text-blue-400 animate-spin mb-4" />
+                      <div className="text-slate-300 text-lg">Running submission tests...</div>
+                    </div>
+                  )}
+
+                  {/* Error state */}
+                  {submissionError && !isSubmitting && (
+                    <div className="p-4 border border-red-500/30 rounded-xl bg-red-500/10 text-center">
+                      <div className="text-red-300 font-semibold">Submission Error</div>
+                      <div className="text-red-400 text-sm mt-1">{submissionError}</div>
+                    </div>
+                  )}
+
+                  {/* Accepted/Rejected */}
+                  {submissionResult && !isSubmitting && (
+                    <div className="space-y-8">
+                      <div className="flex items-center justify-center gap-3 text-center">
+                        <img
+                          src={submissionResult.accepted ? "/accepted.png" : "/rejected.png"}
+                          alt={submissionResult.accepted ? "Accepted" : "Rejected"}
+                          className="w-5 h-5 object-contain loop-bounce"
+                        />
                       </div>
-                      <div className="flex items-center space-x-2 text-sm text-slate-400">
-                        <Target className="w-4 h-4" />
-                        <span>Memory: 14.2 MB</span>
-                      </div>
+
+                      {/* Rejected: show only failed samples in a red-bordered table */}
+                      {!submissionResult.accepted && (
+                        <div className="space-y-4">
+                          <div className="flex gap-4 w-full overflow-visible">
+                            {submissionResult.testCases
+                              .map((tc, originalIdx) => ({ tc, originalIdx }))
+                              .filter(({ tc }) => !tc.passed)
+                              .map(({ tc, originalIdx }) => (
+                                <Card
+                                  key={originalIdx}
+                                  className={`rounded-xl overflow-hidden min-h-[130px] flex-1 min-w-0 flex flex-col transition-none hover:shadow-none testcase-nohover testcase-fail`}
+                                >
+                                  <div className={`px-3 py-1.5 border-b border-red-500/30`}>
+                                    <span className="text-xs font-extrabold uppercase tracking-wide text-pink-500">
+                                      Test Case {originalIdx + 1}
+                                    </span>
+                                  </div>
+                                  <div className="p-3 space-y-2 flex-1">
+                                    <div>
+                                      <div className="text-sm font-extrabold hot-pink mb-0.5 uppercase tracking-wide flex items-center">
+                                        <span>Input</span>
+                                        <span className="relative inline-flex items-center">
+                                          <button
+                                            type="button"
+                                            onClick={() => flashCopied(`sub-${originalIdx}-in`, tc.input)}
+                                            className="ml-0.5 p-0 bg-transparent hover:bg-transparent focus:bg-transparent border-none outline-none ring-0 rounded inline-flex items-center hot-pink opacity-90 hover:opacity-100"
+                                            title="Copy input"
+                                            aria-label={`Copy input for test case ${originalIdx + 1}`}
+                                          >
+                                            {copied[`sub-${originalIdx}-in`] ? (
+                                              <Check className="w-1 h-1 hot-pink transform scale-50" />
+                                            ) : (
+                                              <Copy className="w-1 h-1 transform scale-50 hot-pink" />
+                                            )}
+                                          </button>
+                                          {copied[`sub-${originalIdx}-in`] && (
+                                            <span className="absolute -top-3 left-1/2 -translate-x-1/2 animate-scale-in">
+                                              <Check className="w-2 h-2 hot-pink transform scale-50" />
+                                            </span>
+                                          )}
+                                        </span>
+                                      </div>
+                                      <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">{tc.input}</div>
+                                    </div>
+
+                                    <div>
+                                      <div className="text-sm font-extrabold hot-pink mb-0.5 uppercase tracking-wide flex items-center">
+                                        <span>Expected Output</span>
+                                        <span className="relative inline-flex items-center">
+                                          <button
+                                            type="button"
+                                            onClick={() => flashCopied(`sub-${originalIdx}-out`, tc.expected)}
+                                            className="ml-0.5 p-0 bg-transparent hover:bg-transparent focus:bg-transparent border-none outline-none ring-0 rounded inline-flex items-center hot-pink opacity-90 hover:opacity-100"
+                                            title="Copy expected output"
+                                            aria-label={`Copy expected output for test case ${originalIdx + 1}`}
+                                          >
+                                            {copied[`sub-${originalIdx}-out`] ? (
+                                              <Check className="w-1 h-1 hot-pink transform scale-50" />
+                                            ) : (
+                                              <Copy className="w-1 h-1 transform scale-50 hot-pink" />
+                                            )}
+                                          </button>
+                                          {copied[`sub-${originalIdx}-out`] && (
+                                            <span className="absolute -top-3 left-1/2 -translate-x-1/2 animate-scale-in">
+                                              <Check className="w-2 h-2 hot-pink transform scale-50" />
+                                            </span>
+                                          )}
+                                        </span>
+                                      </div>
+                                      <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">{tc.expected}</div>
+                                    </div>
+
+                                    <div>
+                                      <div className="text-sm font-extrabold text-red-400 mb-0.5 uppercase tracking-wide">Your Output</div>
+                                      <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">{tc.userOutput}</div>
+                                    </div>
+                                  </div>
+                                </Card>
+                              ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-
-                {results ? (
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between p-4 bg-gradient-to-r from-slate-800/50 to-slate-700/50 rounded-xl">
-                      <div className="text-lg font-semibold text-slate-200">
-                        {results}
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        {testStatuses.filter(s => s === 1).length === testStatuses.length ? (
-                          <div className="flex items-center space-x-2 text-emerald-400">
-                            <Check className="w-5 h-5" />
-                            <span className="font-medium">All tests passed!</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center space-x-2 text-amber-400">
-                            <X className="w-5 h-5" />
-                            <span className="font-medium">Some tests failed</span>
-                          </div>
-                        )}
-                      </div>
+              ) : (
+                // Default: show Check Results UI
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-3 h-3 bg-gradient-to-r from-blue-400 to-purple-400 rounded-full"></div>
+                      <h3 className="text-xl font-semibold text-slate-100">Test Results</h3>
                     </div>
-                    
-          <div className="flex gap-4 w-full overflow-visible">
-                      {(prob.examples ?? []).map((example, i) => {
-                        const status = testStatuses[i] ?? 0;
-                        const passed = status === 1;
-                        const failed = status === 2;
-                        return (
-                          <Card
-                            key={i}
-                            className={`rounded-xl overflow-hidden min-h-[130px] flex-1 min-w-0 flex flex-col transition-none hover:shadow-none testcase-nohover ${
-                              status === 0
-                                ? 'bg-slate-900/50 border-slate-600/50 hover:border-slate-600/50'
-                                : passed
-                                ? 'testcase-pass'
-                                : 'testcase-fail'
-                            }`}
-                          >
-                            <div className={`px-3 py-1.5 border-b ${
-                              passed ? 'border-emerald-500/30' : failed ? 'border-red-500/30' : 'border-slate-700/60'
-                            }`}>
-                              <span className="text-xs font-extrabold uppercase tracking-wide text-pink-500">
-                                Test Case {i + 1}
-                              </span>
-                            </div>
-
-                            <div className="p-3 space-y-2 flex-1">
-                              <div>
-                                <div className="text-sm font-extrabold hot-pink mb-0.5 uppercase tracking-wide flex items-center">
-                                  <span>Input</span>
-                                  <span className="relative inline-flex items-center">
-                                    <button
-                                      type="button"
-                                      onClick={() => flashCopied(`tr-${i}-in`, example.input)}
-                                      className="ml-0.5 p-0 bg-transparent hover:bg-transparent focus:bg-transparent border-none outline-none ring-0 rounded inline-flex items-center hot-pink opacity-90 hover:opacity-100"
-                                      title="Copy input"
-                                      aria-label={`Copy input for test case ${i + 1}`}
-                                    >
-                                      {copied[`tr-${i}-in`] ? (
-                                        <Check className="w-1 h-1 hot-pink transform scale-50" />
-                                      ) : (
-                                        <Copy className="w-1 h-1 transform scale-50 hot-pink" />
-                                      )}
-                                    </button>
-                                    {copied[`tr-${i}-in`] && (
-                                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 animate-scale-in">
-                                        <Check className="w-2 h-2 hot-pink transform scale-50" />
-                                      </span>
-                                    )}
-                                  </span>
-                                </div>
-                                <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">
-                                  {example.input}
-                                </div>
-                              </div>
-
-                              <div>
-                                <div className="text-sm font-extrabold hot-pink mb-0.5 uppercase tracking-wide flex items-center">
-                                  <span>{failed ? 'Expected Output' : 'Output'}</span>
-                                  <span className="relative inline-flex items-center">
-                                    <button
-                                      type="button"
-                                      onClick={() => flashCopied(`tr-${i}-out`, example.output)}
-                                      className="ml-0.5 p-0 bg-transparent hover:bg-transparent focus:bg-transparent border-none outline-none ring-0 rounded inline-flex items-center hot-pink opacity-90 hover:opacity-100"
-                                      title={failed ? 'Copy expected output' : 'Copy output'}
-                                      aria-label={`Copy output for test case ${i + 1}`}
-                                    >
-                                      {copied[`tr-${i}-out`] ? (
-                                        <Check className="w-1 h-1 hot-pink transform scale-50" />
-                                      ) : (
-                                        <Copy className="w-1 h-1 transform scale-50 hot-pink" />
-                                      )}
-                                    </button>
-                                    {copied[`tr-${i}-out`] && (
-                                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 animate-scale-in">
-                                        <Check className="w-2 h-2 hot-pink transform scale-50" />
-                                      </span>
-                                    )}
-                                  </span>
-                                </div>
-                                <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">
-                                  {example.output}
-                                </div>
-                              </div>
-
-                              {failed && (
-                                <div>
-                                  <div className="text-sm font-extrabold text-red-400 mb-0.5 uppercase tracking-wide">
-                                    Your Output
-                                  </div>
-                                  <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">
-                                    {userOutputs[i] || ''}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                    
-                    {testStatuses.filter(s => s === 1).length === testStatuses.length && (
-                      <div className="text-center p-6 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 rounded-xl border border-emerald-500/20">
-                        <Trophy className="w-8 h-8 mx-auto text-emerald-400 mb-3" />
-                        <h4 className="text-lg font-semibold text-emerald-300 mb-2">
-                          Congratulations!
-                        </h4>
-                        <p className="text-slate-300">
-                          All test cases passed. Ready to submit your solution?
-                        </p>
+                    {results && (
+                      <div className="flex items-center space-x-4">
+                        <div className="flex items-center space-x-2 text-sm text-slate-400">
+                          <Timer className="w-4 h-4" />
+                          <span>Runtime: 1.2s</span>
+                        </div>
+                        <div className="flex items-center space-x-2 text-sm text-slate-400">
+                          <Target className="w-4 h-4" />
+                          <span>Memory: 14.2 MB</span>
+                        </div>
                       </div>
                     )}
                   </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-full flex items-center justify-center">
-                      <Play className="w-8 h-8 text-blue-400" />
+
+                  {results ? (
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between p-4 bg-gradient-to-r from-slate-800/50 to-slate-700/50 rounded-xl">
+                        <div className="text-lg font-semibold text-slate-200">{results}</div>
+                        <div className="flex items-center space-x-2">
+                          {testStatuses.filter(s => s === 1).length === testStatuses.length ? (
+                            <div className="flex items-center space-x-2 text-emerald-400">
+                              <Check className="w-5 h-5" />
+                              <span className="font-medium">All tests passed!</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center space-x-2 text-amber-400">
+                              <X className="w-5 h-5" />
+                              <span className="font-medium">Some tests failed</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-4 w-full overflow-visible">
+                        {(prob.examples ?? []).map((example, i) => {
+                          const status = testStatuses[i] ?? 0;
+                          const passed = status === 1;
+                          const failed = status === 2;
+                          return (
+                            <Card
+                              key={i}
+                              className={`rounded-xl overflow-hidden min-h-[130px] flex-1 min-w-0 flex flex-col transition-none hover:shadow-none testcase-nohover ${
+                                status === 0
+                                  ? 'bg-slate-900/50 border-slate-600/50 hover:border-slate-600/50'
+                                  : passed
+                                  ? 'testcase-pass'
+                                  : 'testcase-fail'
+                              }`}
+                            >
+                              <div className={`px-3 py-1.5 border-b ${
+                                passed ? 'border-emerald-500/30' : failed ? 'border-red-500/30' : 'border-slate-700/60'
+                              }`}>
+                                <span className="text-xs font-extrabold uppercase tracking-wide text-pink-500">Test Case {i + 1}</span>
+                              </div>
+
+                              <div className="p-3 space-y-2 flex-1">
+                                <div>
+                                  <div className="text-sm font-extrabold hot-pink mb-0.5 uppercase tracking-wide flex items-center">
+                                    <span>Input</span>
+                                    <span className="relative inline-flex items-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => flashCopied(`tr-${i}-in`, example.input)}
+                                        className="ml-0.5 p-0 bg-transparent hover:bg-transparent focus:bg-transparent border-none outline-none ring-0 rounded inline-flex items-center hot-pink opacity-90 hover:opacity-100"
+                                        title="Copy input"
+                                        aria-label={`Copy input for test case ${i + 1}`}
+                                      >
+                                        {copied[`tr-${i}-in`] ? (
+                                          <Check className="w-1 h-1 hot-pink transform scale-50" />
+                                        ) : (
+                                          <Copy className="w-1 h-1 transform scale-50 hot-pink" />
+                                        )}
+                                      </button>
+                                      {copied[`tr-${i}-in`] && (
+                                        <span className="absolute -top-3 left-1/2 -translate-x-1/2 animate-scale-in">
+                                          <Check className="w-2 h-2 hot-pink transform scale-50" />
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">{example.input}</div>
+                                </div>
+
+                                <div>
+                                  <div className="text-sm font-extrabold hot-pink mb-0.5 uppercase tracking-wide flex items-center">
+                                    <span>{failed ? 'Expected Output' : 'Output'}</span>
+                                    <span className="relative inline-flex items-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => flashCopied(`tr-${i}-out`, example.output)}
+                                        className="ml-0.5 p-0 bg-transparent hover:bg-transparent focus:bg-transparent border-none outline-none ring-0 rounded inline-flex items-center hot-pink opacity-90 hover:opacity-100"
+                                        title={failed ? 'Copy expected output' : 'Copy output'}
+                                        aria-label={`Copy output for test case ${i + 1}`}
+                                      >
+                                        {copied[`tr-${i}-out`] ? (
+                                          <Check className="w-1 h-1 hot-pink transform scale-50" />
+                                        ) : (
+                                          <Copy className="w-1 h-1 transform scale-50 hot-pink" />
+                                        )}
+                                      </button>
+                                      {copied[`tr-${i}-out`] && (
+                                        <span className="absolute -top-3 left-1/2 -translate-x-1/2 animate-scale-in">
+                                          <Check className="w-2 h-2 hot-pink transform scale-50" />
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">{example.output}</div>
+                                </div>
+
+                                {failed && (
+                                  <div>
+                                    <div className="text-sm font-extrabold text-red-400 mb-0.5 uppercase tracking-wide">Your Output</div>
+                                    <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">{userOutputs[i] || ''}</div>
+                                  </div>
+                                )}
+                              </div>
+                            </Card>
+                          );
+                        })}
+                      </div>
+
+                      {testStatuses.filter(s => s === 1).length === testStatuses.length && (
+                        <div className="text-center p-6 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 rounded-xl border border-emerald-500/20">
+                          <Trophy className="w-8 h-8 mx-auto text-emerald-400 mb-3" />
+                          <h4 className="text-lg font-semibold text-emerald-300 mb-2">Congratulations!</h4>
+                          <p className="text-slate-300">All test cases passed. Ready to submit your solution?</p>
+                        </div>
+                      )}
                     </div>
-                    <h4 className="text-lg font-semibold text-slate-200 mb-2">
-                      Ready to test your code?
-                    </h4>
-                    <p className="text-slate-400">
-                      Click the &quot;Check&quot; button to execute your solution against the test cases.
-                    </p>
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-full flex items-center justify-center">
+                        <Play className="w-8 h-8 text-blue-400" />
+                      </div>
+                      <h4 className="text-lg font-semibold text-slate-200 mb-2">Ready to test your code?</h4>
+                      <p className="text-slate-400">Click the &quot;Check&quot; button to execute your solution against the test cases.</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </Card>
+            
+            {/* Submission results are now shown inside the Test Results panel above */}
           </div>
         </div>
       </div>
