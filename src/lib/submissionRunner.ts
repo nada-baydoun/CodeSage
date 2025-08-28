@@ -52,7 +52,11 @@ export async function evaluateSubmission(
   }
   
   try {
-    // Step 1: Load checker.json and extract problem data
+  // Helpers for data URLs (support external hosting)
+  const DATA_BASE = (process.env.NEXT_PUBLIC_DATA_BASE_URL || "").replace(/\/$/, "");
+  const dataUrl = (name: string) => (DATA_BASE ? `${DATA_BASE}/${name}` : `/data/${name}`);
+
+  // Step 1: Load checker JSON and extract problem data
     console.log('\n📋 Step 1: Loading checker.json...')
     
     // Add timeout and better error handling for the fetch
@@ -63,10 +67,10 @@ export async function evaluateSubmission(
     let usedMiniFile = false
     
     try {
-      // First try the main checker1.json
-      console.log('🔄 Trying to load main checker1.json...')
-      const bust = `?t=${Date.now()}`
-      const checkerResponse = await fetch(`/data/checker1.json${bust}`, {
+  // First try the main checker1.json
+  console.log('🔄 Trying to load main checker1.json...')
+  const bust = `?t=${Date.now()}`
+  const checkerResponse = await fetch(`${dataUrl('checker1.json')}${bust}`, {
         signal: controller.signal,
         headers: {
           'Accept': 'application/json',
@@ -110,7 +114,7 @@ export async function evaluateSubmission(
         console.log('⏬ Using checker-mini.json due to main checker issue:', fetchError.message)
         try {
           console.log('🔄 Loading checker-mini.json as fallback...')
-          const miniResponse = await fetch(`/data/checker-mini.json${`?t=${Date.now()}`}`, { cache: 'no-store', headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' } })
+          const miniResponse = await fetch(`${dataUrl('checker-mini.json')}${`?t=${Date.now()}`}`, { cache: 'no-store', headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' } })
 
           if (!miniResponse.ok) {
             throw new Error(`Failed to load checker-mini.json: ${miniResponse.status} ${miniResponse.statusText}`)

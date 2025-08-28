@@ -1,1 +1,10 @@
-public/data/*.json filter=lfs diff=lfs merge=lfs -text
+# Track only very large JSONs with LFS; keep smaller ones as regular files
+public/data/checker.json filter=lfs diff=lfs merge=lfs -text
+public/data/checker1.json filter=lfs diff=lfs merge=lfs -text
+public/data/generations.json filter=lfs diff=lfs merge=lfs -text
+public/data/prompts.json filter=lfs diff=lfs merge=lfs -text
+public/data/thinking.json filter=lfs diff=lfs merge=lfs -text
+
+# Ensure these are NOT tracked via LFS (serve raw JSON on Vercel)
+public/data/problemset_complete.json -filter -diff -merge -text
+public/data/descriptions.json -filter -diff -merge -text

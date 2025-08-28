@@ -10,18 +10,20 @@ function makeKey(contestId: string | number, index: string) {
 
 async function getProblemData(contestId: string, index: string) {
   const hdrs = await headers();
+  const DATA_BASE = (process.env.NEXT_PUBLIC_DATA_BASE_URL || "").replace(/\/$/, "");
   const proto = hdrs.get('x-forwarded-proto') ?? 'http';
   const host = hdrs.get('host') ?? 'localhost:3000';
-  const base = `${proto}://${host}`;
+  const localBase = `${proto}://${host}`;
+  const base = DATA_BASE || localBase;
   // Fetch the problem list (for metadata like name, rating, tags)
-  const problemsRes = await fetch(`${base}/data/problemset_complete.json`, { cache: 'no-store' });
+  const problemsRes = await fetch(`${base}${DATA_BASE ? '' : ''}/data/problemset_complete.json`.replace(/\/+data\//, '/data/'), { cache: 'no-store' });
   if (!problemsRes.ok) throw new Error(`Failed to load problemset (${problemsRes.status})`);
   const problems = await problemsRes.json();
 
   const meta = (problems as any[]).find(p => String(p.contestId) === String(contestId) && String(p.index) === String(index));
 
   // Fetch descriptions map
-  const descRes = await fetch(`${base}/data/descriptions.json`, { cache: 'no-store' });
+  const descRes = await fetch(`${base}${DATA_BASE ? '' : ''}/data/descriptions.json`.replace(/\/+data\//, '/data/'), { cache: 'no-store' });
   if (!descRes.ok) throw new Error(`Failed to load descriptions (${descRes.status})`);
   const descriptions = await descRes.json();
   const key = makeKey(contestId, index);

@@ -122,10 +122,12 @@ export default function ProblemsPage() {
   const [statusMap, setStatusMap] = useState<Record<string, Status>>({});
 
   useEffect(() => {
-    async function loadData() {
+  async function loadData() {
       try {
         setLoading(true); setError("");
-        const res = await fetch("/data/problemset_complete.json", { cache: "no-store" });
+    const DATA_BASE = (process.env.NEXT_PUBLIC_DATA_BASE_URL || "").replace(/\/$/, "");
+    const url = DATA_BASE ? `${DATA_BASE}/problemset_complete.json` : "/data/problemset_complete.json";
+    const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) throw new Error(`Failed to fetch: ${res.status} ${res.statusText}`);
         const data = await res.json();
         setProblems(data);

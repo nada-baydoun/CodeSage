@@ -1,3 +1,19 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:e0742ab6eac2c155da58117e15dd0b827969b9a2699fd339edf37928e33786db
-size 452
+{
+  "306/A": {
+    "id": "306/A",
+    "contestId": 306,
+    "index": "A",
+    "generator": {
+      "exists": true,
+      "code": "import random\nprint(f\"{random.randint(1,100)} {random.randint(1,100)}\")"
+    },
+    "solutions_py_decontaminated": {
+      "exists": false,
+      "codes": []
+    },
+    "best_solution": "a,b=map(int,input().split());print(a+b)",
+    "prompt": [],
+    "generation": [],
+    "thinking_steps": []
+  }
+}
