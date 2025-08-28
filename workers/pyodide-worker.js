@@ -7,7 +7,7 @@ let __pyodidePromise = null;
 async function ensurePyodide() {
   if (!__pyodidePromise) {
     self.importScripts("https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js");
-    // @ts-ignore
+  // @ts-expect-error - loadPyodide provided by imported script
     __pyodidePromise = self.loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/" });
   }
   return __pyodidePromise;

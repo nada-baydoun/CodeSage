@@ -74,47 +74,7 @@ export function normalizeOutput(s: string | undefined | null) {
   return String(s).trim();
 }
 
-function coerceToJsonLike(str: string) {
-  let s = str.trim();
-  // Replace Python tuples with JSON arrays
-  s = s.replace(/^\(/, '[').replace(/\)$/, ']');
-  // Replace single quotes with double quotes for JSON compatibility (best effort)
-  s = s.replace(/'/g, '"');
-  // Python booleans/None to JSON
-  s = s.replace(/\bNone\b/g, 'null').replace(/\bTrue\b/g, 'true').replace(/\bFalse\b/g, 'false');
-  return s;
-}
-
-function deepEqual(a: unknown, b: unknown) {
-  if (a === b) return true;
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (!deepEqual(a[i], b[i])) return false;
-    }
-    return true;
-  }
-  if (a && b && typeof a === 'object' && typeof b === 'object') {
-    const ak = Object.keys(a as Record<string, unknown>).sort();
-    const bk = Object.keys(b as Record<string, unknown>).sort();
-    if (ak.length !== bk.length) return false;
-    for (let i = 0; i < ak.length; i++) {
-      if (ak[i] !== bk[i]) return false;
-      if (!deepEqual((a as Record<string, unknown>)[ak[i]], (b as Record<string, unknown>)[bk[i]])) return false;
-    }
-    return true;
-  }
-  return false;
-}
-
-function arrayMultisetEqual(a: unknown[], b: unknown[]) {
-  if (a.length !== b.length) return false;
-  const norm = (v: unknown) => (v && typeof v === 'object') ? JSON.stringify(v) : String(v);
-  const sa = [...a].map(norm).sort();
-  const sb = [...b].map(norm).sort();
-  for (let i = 0; i < sa.length; i++) if (sa[i] !== sb[i]) return false;
-  return true;
-}
+// removed unused helpers
 
 export function outputsMatch(expectedRaw: string, producedRaw: string): boolean {
   // First, try exact match (case-sensitive)

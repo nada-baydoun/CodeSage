@@ -1,7 +1,7 @@
 import React from 'react'
 import { Card } from './ui/card'
 import { Check, X, AlertCircle, Loader2 } from 'lucide-react'
-import type { SubmissionResult, TestCase } from '@/lib/submissionRunner'
+import type { SubmissionResult } from '@/lib/submissionRunner'
 
 interface SubmissionResultsProps {
   result: SubmissionResult | null

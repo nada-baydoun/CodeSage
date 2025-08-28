@@ -1,0 +1,2 @@
+# Prevent massive JSON assets from being uploaded to Vercel
+public/data/*.json

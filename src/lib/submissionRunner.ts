@@ -88,7 +88,7 @@ export async function evaluateSubmission(
       const contentLength = checkerResponse.headers.get('content-length')
       console.log('📏 Content length:', contentLength ? `${contentLength} bytes` : 'Unknown')
 
-      let text = await checkerResponse.text()
+  const text = await checkerResponse.text()
       console.log('📄 Raw response preview (first 500 chars):', text.substring(0, 500))
       console.log('📄 Raw response length:', text.length, 'characters')
 

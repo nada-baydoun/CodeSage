@@ -10,16 +10,27 @@ export type JudgeResult = { accepted: boolean; seed: number; cases: TestCase[]; 
 
 class PyWorker {
   private worker: Worker;
-  private inflight = new Map<string, { resolve: Function; reject: Function; timer?: any }>();
+  private inflight = new Map<
+    string,
+    {
+      resolve: (result: { out: string; err: string }) => void;
+      reject: (error: Error) => void;
+      timer?: ReturnType<typeof setTimeout>;
+    }
+  >();
   constructor(private timeoutMs = 2500) {
     this.worker = new Worker(new URL("../workers/pyodide-worker.js", import.meta.url), { type: "classic" });
     this.worker.onmessage = (ev: MessageEvent) => {
       const { id, ok, out, err, error } = ev.data || {};
       const rec = this.inflight.get(id);
       if (!rec) return;
-      clearTimeout(rec.timer);
+      if (rec.timer) clearTimeout(rec.timer);
       this.inflight.delete(id);
-      ok ? rec.resolve({ out, err }) : rec.reject(new Error(error || "Execution error"));
+      if (ok) {
+        rec.resolve({ out, err });
+      } else {
+        rec.reject(new Error(error || "Execution error"));
+      }
     };
   }
   run(code: string, input = "", prelude = ""): Promise<{ out: string; err: string }> {
@@ -96,10 +107,18 @@ export async function evaluateSubmission(
 
   for (const input of inputs) {
     let expected = "", got = "";
-    try { expected = (await py.run(checker.best_solution, input + "\n")).out; }
-    catch (e: any) { expected = `__REF_ERROR__: ${e?.message || e}`; }
-    try { got = (await py.run(userCode, input + "\n")).out; }
-    catch (e: any) { got = `__RUNTIME_ERROR__: ${e?.message || e}`; }
+    try {
+      expected = (await py.run(checker.best_solution, input + "\n")).out;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      expected = `__REF_ERROR__: ${msg}`;
+    }
+    try {
+      got = (await py.run(userCode, input + "\n")).out;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      got = `__RUNTIME_ERROR__: ${msg}`;
+    }
 
     const pass = normalize(got) === normalize(expected);
     cases.push({ input, expected: expected.trim(), got: got.trim(), pass, diff: pass ? undefined : makeDiff(expected.trim(), got.trim()) });

@@ -5,6 +5,7 @@ import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import Editor from "@monaco-editor/react";
 import Link from "next/link";
+import Image from "next/image";
 import { 
   Play, 
   Send, 
@@ -930,10 +931,13 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
                   {submissionResult && !isSubmitting && (
                     <div className="space-y-8">
                       <div className="flex items-center justify-center gap-3 text-center">
-                        <img
+                        <Image
                           src={submissionResult.accepted ? "/accepted.png" : "/rejected.png"}
                           alt={submissionResult.accepted ? "Accepted" : "Rejected"}
+                          width={80}
+                          height={80}
                           className="w-5 h-5 object-contain loop-bounce"
+                          priority
                         />
                       </div>
 
