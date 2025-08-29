@@ -57,92 +57,57 @@ export async function evaluateSubmission(
   const dataUrl = (name: string) => (DATA_BASE ? `${DATA_BASE}/${name}` : `/data/${name}`);
 
   // Step 1: Load checker JSON and extract problem data
-    console.log('\n📋 Step 1: Loading checker.json...')
+  console.log('\n📋 Step 1: Loading checker.json...')
     
     // Add timeout and better error handling for the fetch
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
     
-    let checkerData
-    let usedMiniFile = false
+  let checkerData
     
     try {
-  // First try the main checker1.json
-  console.log('🔄 Trying to load main checker1.json...')
-  const bust = `?t=${Date.now()}`
-  const checkerResponse = await fetch(`${dataUrl('checker1.json')}${bust}`, {
+      // Fetch the main checker1.json
+      console.log('🔄 Trying to load main checker1.json...')
+      const bust = `?t=${Date.now()}`
+      const checkerResponse = await fetch(`${dataUrl('checker1.json')}${bust}`, {
         signal: controller.signal,
-        headers: {
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache'
-        },
         cache: 'no-store'
       })
-      
+
       clearTimeout(timeoutId)
-      
+
       if (!checkerResponse.ok) {
         throw new Error(`Failed to load checker1.json: ${checkerResponse.status} ${checkerResponse.statusText}`)
       }
-      
+
       const contentType = checkerResponse.headers.get('content-type') || ''
       console.log('🧾 Content-Type:', contentType)
-      
+
       console.log('✅ Checker1.json response received, parsing JSON...')
       const contentLength = checkerResponse.headers.get('content-length')
       console.log('📏 Content length:', contentLength ? `${contentLength} bytes` : 'Unknown')
 
-  const text = await checkerResponse.text()
+      const text = await checkerResponse.text()
       console.log('📄 Raw response preview (first 500 chars):', text.substring(0, 500))
       console.log('📄 Raw response length:', text.length, 'characters')
 
-      // If empty or looks like HTML or wrong content-type, fallback to mini file
+      // Validate JSON shape
       const looksLikeHtml = /^\s*<|<!DOCTYPE html>/i.test(text)
       const isJsonType = /application\/json|json/i.test(contentType)
       if (!text.trim() || looksLikeHtml || !isJsonType) {
         const reason = !text.trim() ? 'empty' : (looksLikeHtml ? 'HTML instead of JSON' : `unexpected Content-Type: ${contentType}`)
-        console.warn(`⚠️ Main checker1.json is ${reason}. Falling back to checker-mini.json ...`)
-        throw new Error('FALLBACK_TO_MINI')
+        throw new Error(`checker1.json invalid: ${reason}. Ensure NEXT_PUBLIC_DATA_BASE_URL points to your Cloudflare R2 public base and CORS allows GET.`)
       }
 
       checkerData = JSON.parse(text)
       console.log('✅ JSON parsed successfully')
 
     } catch (fetchError) {
-      // If error is the explicit fallback signal or any parse/fetch error -> use mini file
-      if (fetchError instanceof Error && (fetchError.name === 'AbortError' || fetchError.message === 'FALLBACK_TO_MINI' || fetchError.message.includes('Unexpected token') || fetchError.message.includes('JSON'))) {
-        console.log('⏬ Using checker-mini.json due to main checker issue:', fetchError.message)
-        try {
-          console.log('🔄 Loading checker-mini.json as fallback...')
-          const miniResponse = await fetch(`${dataUrl('checker-mini.json')}${`?t=${Date.now()}`}`, { cache: 'no-store', headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' } })
-
-          if (!miniResponse.ok) {
-            throw new Error(`Failed to load checker-mini.json: ${miniResponse.status} ${miniResponse.statusText}`)
-          }
-
-          const miniContentType = miniResponse.headers.get('content-type') || ''
-          const miniText = await miniResponse.text()
-          const miniLooksLikeHtml = /^\s*<|<!DOCTYPE html>/i.test(miniText)
-          if (!miniText.trim() || miniLooksLikeHtml || !/application\/json|json/i.test(miniContentType)) {
-            throw new Error(`checker-mini.json is not valid JSON or is empty (Content-Type: ${miniContentType})`)
-          }
-
-          checkerData = JSON.parse(miniText)
-          usedMiniFile = true
-          console.log('✅ Checker-mini.json loaded successfully as fallback')
-
-        } catch (miniError) {
-          const fetchErrorMsg = fetchError instanceof Error ? fetchError.message : String(fetchError)
-          const miniErrorMsg = miniError instanceof Error ? miniError.message : String(miniError)
-          throw new Error(`Both checker1.json and checker-mini.json failed. Main error: ${fetchErrorMsg}, Mini error: ${miniErrorMsg}`)
-        }
-      } else {
-        // Unknown error: rethrow
-        throw fetchError
-      }
+      const msg = fetchError instanceof Error ? fetchError.message : String(fetchError)
+      throw new Error(`Failed to load checker data. ${msg}`)
     }
-    
-    console.log(`✅ ${usedMiniFile ? 'Checker-mini.json' : 'Checker.json'} loaded successfully`)
+
+    console.log(`✅ Checker.json loaded successfully`)
     
     // Step 2: Extract the specific problem data
     console.log('\n🔍 Step 2: Extracting problem data...')
