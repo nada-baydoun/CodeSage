@@ -126,8 +126,8 @@ export default function ProblemsPage() {
       try {
         setLoading(true); setError("");
     const DATA_BASE = (process.env.NEXT_PUBLIC_DATA_BASE_URL || "").replace(/\/$/, "");
-    const url = DATA_BASE ? `${DATA_BASE}/problemset_complete.json` : "/data/problemset_complete.json";
-    const res = await fetch(url, { cache: "no-store" });
+    const dataUrl = (name: string) => (DATA_BASE ? `${DATA_BASE}/${name}` : `/data/${name}`);
+    const res = await fetch(dataUrl('problemset_complete.json'), { cache: "no-store" });
         if (!res.ok) throw new Error(`Failed to fetch: ${res.status} ${res.statusText}`);
         const data = await res.json();
         setProblems(data);
