@@ -96,7 +96,7 @@ export async function evaluateSubmission(
       const isJsonType = /application\/json|json/i.test(contentType)
       if (!text.trim() || looksLikeHtml || !isJsonType) {
         const reason = !text.trim() ? 'empty' : (looksLikeHtml ? 'HTML instead of JSON' : `unexpected Content-Type: ${contentType}`)
-        throw new Error(`checker1.json invalid: ${reason}. Ensure NEXT_PUBLIC_DATA_BASE_URL points to your Cloudflare R2 public base and CORS allows GET.`)
+        throw new Error(`checker1.json invalid: ${reason}. If using local files, ensure public/data/checker1.json exists. If using an external URL, set NEXT_PUBLIC_DATA_BASE_URL and allow GET with application/json.`)
       }
 
       checkerData = JSON.parse(text)
