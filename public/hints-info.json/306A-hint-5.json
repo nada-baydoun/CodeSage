@@ -1,0 +1,13 @@
+{
+  "errorClasses": [
+    "syntax"
+  ],
+  "hint": "Does the assignment of n and m ensure that the input is valid?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}

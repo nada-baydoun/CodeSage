@@ -1,0 +1,14 @@
+{
+  "errorClasses": [
+    "syntax",
+    "knowledge_gap"
+  ],
+  "hint": "Have you considered that 'input' should be called like 'input()'?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}

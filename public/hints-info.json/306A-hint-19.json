@@ -1,0 +1,14 @@
+{
+  "errorClasses": [
+    "syntax",
+    "missing_concept"
+  ],
+  "hint": "Are you sure about the range logic and its purpose in this loop?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}

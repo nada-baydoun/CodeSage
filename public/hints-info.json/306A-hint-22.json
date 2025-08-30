@@ -1,0 +1,13 @@
+{
+  "errorClasses": [
+    "runtime"
+  ],
+  "hint": "Are you sure that the index 'i' is always valid in the list 'a'?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}

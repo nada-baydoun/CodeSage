@@ -1,0 +1,13 @@
+{
+  "errorClasses": [
+    "syntax"
+  ],
+  "hint": "Are you certain that the syntax correctly defines your list with the intended operation?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}

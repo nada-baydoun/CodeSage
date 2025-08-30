@@ -1,0 +1,14 @@
+{
+  "errorClasses": [
+    "syntax",
+    "runtime"
+  ],
+  "hint": "Are you sure that the index i is within the valid range for the array a?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}

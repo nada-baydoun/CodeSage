@@ -1,0 +1,13 @@
+{
+  "errorClasses": [
+    "syntax"
+  ],
+  "hint": "Are you sure about the way you initialized your variables?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}

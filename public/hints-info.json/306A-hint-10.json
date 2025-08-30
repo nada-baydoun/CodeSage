@@ -1,0 +1,14 @@
+{
+  "errorClasses": [
+    "syntax",
+    "runtime"
+  ],
+  "hint": "Are you sure about using the division and addition operators in that context?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}

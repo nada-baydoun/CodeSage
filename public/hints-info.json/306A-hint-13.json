@@ -1,0 +1,13 @@
+{
+  "errorClasses": [
+    "runtime"
+  ],
+  "hint": "Are you sure that the index i remains within valid bounds during the loop?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}

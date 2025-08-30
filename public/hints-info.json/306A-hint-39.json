@@ -1,0 +1,13 @@
+{
+  "errorClasses": [
+    "syntax"
+  ],
+  "hint": "Have you used the correct method for reading input in Python?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}

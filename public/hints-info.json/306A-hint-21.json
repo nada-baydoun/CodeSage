@@ -1,0 +1,14 @@
+{
+  "errorClasses": [
+    "logical",
+    "runtime"
+  ],
+  "hint": "Are you certain that the indices you're accessing in the array are valid?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}

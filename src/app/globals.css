@@ -2,6 +2,12 @@
 .btn-run {
   color: #000 !important;
 }
+
+/* Status pie helpers */
+.status-pie-root { position: relative; width: 160px; height: 160px; }
+.status-pie-seg { cursor: pointer; }
+.status-pie-tooltip { position: absolute; background: rgba(2,6,23,0.95); border: 1px solid rgba(148,163,184,0.12); color: #fff; font-size: 0.9rem; padding: 0.4rem 0.6rem; border-radius: 6px; pointer-events: none; transform: translate(0,0); z-index: 9999; box-shadow: 0 8px 20px rgba(2,6,23,0.6); white-space: nowrap; }
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -503,6 +509,32 @@ textarea::placeholder {
   background-clip: text;
 }
 
+/* Large responsive attempted count for dashboard */
+.attempted-count {
+  font-weight: 800;
+  font-size: 4.5rem; /* mobile */
+  line-height: 0.95;
+}
+@media (min-width: 768px) {
+  .attempted-count { font-size: 6rem; }
+}
+@media (min-width: 1024px) {
+  .attempted-count { font-size: 7.5rem; }
+}
+
+/* 50% smaller variant of attempted-count for headings that should match proportionally */
+.attempted-count-sm {
+  font-weight: 800;
+  font-size: 2.25rem; /* mobile = 50% of 4.5rem */
+  line-height: 0.95;
+}
+@media (min-width: 768px) {
+  .attempted-count-sm { font-size: 3rem; } /* 50% of 6rem */
+}
+@media (min-width: 1024px) {
+  .attempted-count-sm { font-size: 3.75rem; } /* 50% of 7.5rem */
+}
+
 /* Neon glow effects */
 .neon-glow {
   box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
@@ -698,6 +730,59 @@ textarea::placeholder {
   border: none !important;
   outline: none !important;
   box-shadow: none !important;
+}
+
+/* Transparent select (visual only) */
+.transparent-select {
+  background: transparent !important;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.transparent-select option {
+  /* try to make options transparent and white text; many browsers ignore option styling, but this is best-effort */
+  background: transparent !important;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important; /* Safari */
+}
+
+/* For select controls that use shadow DOM or system UI, force text color by targeting common pseudo elements */
+.transparent-select::-ms-expand { display: none; }
+.transparent-select:-moz-focusring { color: transparent; text-shadow: 0 0 0 #fff; }
+
+/* Remove border and center text for select control and options (best-effort) */
+.transparent-select {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  text-align: center; /* centers selected value in some browsers */
+}
+.transparent-select option {
+  text-align: center; /* center option text where supported */
+  padding-left: 0.25rem; /* slight padding for visual balance */
+  padding-right: 0.25rem;
+}
+/* remove any visible option borders where possible */
+.transparent-select option {
+  border: none !important;
+}
+
+/* Transparent table for Tag/Filter layout */
+.transparent-table {
+  border-collapse: collapse;
+  width: 100%;
+  background: transparent;
+}
+.transparent-table td,
+.transparent-table th {
+  border: 1px solid transparent;
+  background: transparent;
+  vertical-align: middle;
+  padding: 0.75rem;
+}
+.table-cell-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Pagination buttons: always white text, no borders/rings */
@@ -1049,7 +1134,11 @@ textarea::placeholder {
   left: auto !important;
   inset-inline-start: auto !important;
   inset-inline-end: 1rem !important;
-  z-index: 9999 !important;
+  /* place banner above normal content but below the sticky header (header uses z-50) */
+  z-index: 40 !important;
+  /* avoid catching pointer events for empty/transparent parts of the fixed container
+     and ensure only the visible card itself remains interactive */
+  pointer-events: none !important;
 }
 
 /* Ensure the banner card stays dark blue even if other styles cascade in */
@@ -1057,3 +1146,77 @@ textarea::placeholder {
   background-color: rgb(30 58 138) !important; /* Tailwind bg-blue-900 */
   border-color: rgb(30 64 175) !important; /* Tailwind border-blue-800 */
 }
+
+/* Allow interactions on the inner card while the outer fixed container ignores pointer events */
+.hint-banner-fixed .hint-banner-card {
+  pointer-events: auto !important;
+}
+
+/* Hint glyph icon (shown in Monaco glyph margin) */
+.hint-glyph {
+  font-family: codicon !important; /* Monaco codicon font */
+  font-size: 14px !important;
+  color: #fbbf24 !important; /* amber-400 */
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1 !important;
+  cursor: pointer;
+}
+
+/* Fallback marker in case codicon font isn't available */
+.hint-glyph::before {
+  content: "\ea6b"; /* codicon-comment glyph */
+  font-family: codicon, sans-serif;
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* Hint popup bubble */
+.hint-popup {
+  background: rgba(234, 179, 8, 0.12); /* yellow-500/12 */
+  color: #fde68a; /* yellow-200 */
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: auto;
+  z-index: 5;
+}
+
+/* Dashboard status dot colors (must match COLORS in dashboard) */
+.status-dot { display: inline-block; }
+.status-viewed { background-color: #38bdf8; }
+.status-tried { background-color: #f59e0b; }
+.status-accepted { background-color: #22c55e; }
+.status-rejected { background-color: #ef4444; }
+
+/* Legend colors for donuts (palette order) */
+.legend-color { display: inline-block; }
+.legend-0 { background-color: #22c55e; }
+.legend-1 { background-color: #ef4444; }
+.legend-2 { background-color: #f59e0b; }
+.legend-3 { background-color: #38bdf8; }
+.legend-4 { background-color: #a78bfa; }
+.legend-5 { background-color: #f472b6; }
+.legend-6 { background-color: #34d399; }
+
+/* Donut tooltip (rendered via portal) */
+.donut-tooltip { position: fixed; pointer-events: none; z-index: 99999; }
+.donut-tooltip-inner { background: rgba(2,6,23,0.95); border: 1px solid rgba(148,163,184,0.12); color: #fff; padding: 6px 10px; border-radius: 8px; font-size: 12px; box-shadow: 0 8px 20px rgba(2,6,23,0.6); text-align: center; }
+.donut-tooltip-title { font-weight: 700; text-transform: capitalize; }
+.donut-tooltip-sub { color: #94a3b8; margin-top: 2px; }
+/* Bar tooltip (rendered via portal) */
+.bar-tooltip { position: fixed; pointer-events: none; z-index: 99999; }
+.bar-tooltip-inner { background: rgba(2,6,23,0.95); border: 1px solid rgba(148,163,184,0.12); color: #fff; padding: 6px 10px; border-radius: 8px; font-size: 12px; box-shadow: 0 8px 20px rgba(2,6,23,0.6); text-align: center; }
+.bar-tooltip-title { font-weight: 700; }
+.bar-tooltip-sub { color: #94a3b8; margin-top: 2px; }
+
+/* small status dot colors used in dashboard attempted table */
+.status-dot-viewed { background-color: #38bdf8; }
+.status-dot-tried { background-color: #f59e0b; }
+.status-dot-accepted { background-color: #22c55e; }
+.status-dot-rejected { background-color: #ef4444; }

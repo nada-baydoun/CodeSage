@@ -6,6 +6,7 @@ const logger = new Logger("Config:Env");
 // Schema for environment variables
 const envSchema = z.object({
   OPENAI_API_KEY: z.string().min(1),
+  TAVILY_API_KEY: z.string().optional(),
 });
 
 // Function to validate environment variables
@@ -14,6 +15,7 @@ const validateEnv = () => {
     logger.info("Validating environment variables");
     const env = {
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      TAVILY_API_KEY: process.env.TAVILY_API_KEY,
     };
     const parsed = envSchema.parse(env);
     logger.info("Environment variables validated successfully");

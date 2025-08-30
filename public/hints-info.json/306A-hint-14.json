@@ -1,0 +1,13 @@
+{
+  "errorClasses": [
+    "logical"
+  ],
+  "hint": "Are you certain that the indices in your loop correspond to valid positions in array 'a'?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}

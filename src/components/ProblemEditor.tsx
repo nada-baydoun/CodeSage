@@ -151,11 +151,20 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
   });
   const [showHint, setShowHint] = useState(false);
   const [hintEnabled, setHintEnabled] = useState(false);
+  // Mirror of hintEnabled to avoid stale closures in Monaco callbacks
+  const hintEnabledRef = useRef<boolean>(false);
+  useEffect(() => { hintEnabledRef.current = hintEnabled; }, [hintEnabled]);
   const [showHintBanner, setShowHintBanner] = useState(true);
   const [running, setRunning] = useState(false);
   const [runningRaw, setRunningRaw] = useState(false);
   const [results, setResults] = useState<string | null>(null);
   const [testStatuses, setTestStatuses] = useState<number[]>([]);
+  // Full-code hint after failed checks
+  const [fullDesc, setFullDesc] = useState<string>("");
+  const [fullFailure, setFullFailure] = useState<string>("");
+  const [failedAnalyses, setFailedAnalyses] = useState<Array<{ index: number; explanation: string; categories: string[] }>>([]);
+  const [studyResources, setStudyResources] = useState<{ youtube?: { title: string; url: string } | null; webpage?: { title: string; url: string } | null } | null>(null);
+  const [nextSuggestion, setNextSuggestion] = useState<{ id?: string; name?: string; contestId?: number; index?: string } | null>(null);
   const [userOutputs, setUserOutputs] = useState<string[]>([]);
   const [runOutput, setRunOutput] = useState<string>("");
   const [runError, setRunError] = useState<string>("");
@@ -172,7 +181,19 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
   const editorFontSize = 16;
   const [copied, setCopied] = useState<Record<string, boolean>>({});
   const editorRef = useRef<MonacoEditorNS.IStandaloneCodeEditor | null>(null);
+  const editorContainerRef = useRef<HTMLDivElement | null>(null);
   const [editorHeight, setEditorHeight] = useState<string | number>('800px');
+  // Hint glyph decorations: track decoration ids and AI hint text per id.
+  const hintDecorationsRef = useRef<Array<{ id: string }>>([]);
+  const hintTextByIdRef = useRef<Record<string, string>>({});
+  const hintReportByIdRef = useRef<Record<string, any>>({});
+  // Remember info about the last Enter keypress before the model changes
+  const lastEnterInfoRef = useRef<{
+    line: number;
+    col: number;
+    hadCode: boolean;
+    hasCodeBefore: boolean;
+  } | null>(null);
   
   // Submission state
   const [submissionResult, setSubmissionResult] = useState<SubmissionResult | null>(null);
@@ -202,9 +223,15 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
   setActivePanel('check');
     setRunning(true);
     setResults(null);
+  setFullDesc("");
+  setFullFailure("");
+  setFailedAnalyses([]);
     const n = (prob.examples ?? []).length;
-    setTestStatuses(Array.from({ length: n }, () => 0));
-    setUserOutputs(Array.from({ length: n }, () => ""));
+  // Use local arrays to avoid stale React state when building failure analysis
+  const localStatuses: number[] = Array.from({ length: n }, () => 0);
+  const localUserOutputs: string[] = Array.from({ length: n }, () => "");
+  setTestStatuses(localStatuses.slice());
+  setUserOutputs(localUserOutputs.slice());
 
     const examples = prob.examples ?? [];
     let passCount = 0;
@@ -215,48 +242,89 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
       try {
         const res = await runPythonWithInput(lastValidCodeRef.current || code, inputSetup);
         if (res.exception) {
-          setUserOutputs((prev) => {
-            const next = [...prev];
-            next[i] = `${res.exception}${res.stderr ? `\n${res.stderr}` : ''}`;
-            return next;
-          });
-          setTestStatuses((prev) => {
-            const next = [...prev];
-            next[i] = 2;
-            return next;
-          });
+          const msg = `${res.exception}${res.stderr ? `\n${res.stderr}` : ''}`;
+          localUserOutputs[i] = msg;
+          localStatuses[i] = 2;
+          setUserOutputs(localUserOutputs.slice());
+          setTestStatuses(localStatuses.slice());
           continue;
         }
         const produced = (res.value ?? res.stdout ?? "").toString();
         const expected = ex.output ?? "";
         const ok = outputsMatch(expected, produced);
-        setUserOutputs((prev) => {
-          const next = [...prev];
-          next[i] = produced;
-          return next;
-        });
-        setTestStatuses((prev) => {
-          const next = [...prev];
-          next[i] = ok ? 1 : 2;
-          return next;
-        });
+        localUserOutputs[i] = produced;
+        localStatuses[i] = ok ? 1 : 2;
+        setUserOutputs(localUserOutputs.slice());
+        setTestStatuses(localStatuses.slice());
         if (ok) passCount++;
       } catch {
-        setTestStatuses((prev) => {
-          const next = [...prev];
-          next[i] = 2;
-          return next;
-        });
-        setUserOutputs((prev) => {
-          const next = [...prev];
-          next[i] = "Runtime error";
-          return next;
-        });
+        localStatuses[i] = 2;
+        localUserOutputs[i] = "Runtime error";
+        setUserOutputs(localUserOutputs.slice());
+        setTestStatuses(localStatuses.slice());
       }
     }
 
     const total = examples.length;
-    setResults(total > 0 ? `${passCount}/${total} test cases passed` : "Ran 0 sample tests");
+    const summary = total > 0 ? `${passCount}/${total} test cases passed` : "Ran 0 sample tests";
+    setResults(summary);
+    // If hints are enabled and tests failed, fetch a minimal full-code hint
+    if (hintEnabledRef.current && total > 0 && passCount < total) {
+      try {
+        const res = await fetch('/api/hints/full', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            language: 'python',
+            snippet: lastValidCodeRef.current || code,
+            problem: { id: prob.id, name: prob.name, statement: prob.statement, tags: prob.tags },
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setFullDesc((data?.description ?? '').toString());
+          setFullFailure((data?.failure ?? '').toString());
+        }
+      } catch {}
+
+      // New: also call failures analysis to explain failed test cases
+      try {
+        const failedCases = (prob.examples ?? [])
+          .map((ex, i) => ({
+            index: i,
+            input: ex.input || '',
+            expected: ex.output || '',
+            userOutput: (localUserOutputs[i] ?? '').toString(),
+            passed: (localStatuses[i] ?? 0) === 1,
+          }))
+          .filter(x => !x.passed)
+          .map(({ index, input, expected, userOutput }) => ({ index, input, expected, userOutput }));
+
+        if (failedCases.length) {
+          const res2 = await fetch('/api/hints/failures', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              language: 'python',
+              snippet: lastValidCodeRef.current || code,
+              problem: { id: prob.id, name: prob.name, statement: prob.statement },
+              failedCases,
+            }),
+          });
+          if (res2.ok) {
+            const data2 = await res2.json();
+            const arr = Array.isArray(data2?.analyses) ? data2.analyses : [];
+            setFailedAnalyses(arr);
+            if (arr.length) {
+              try {
+                console.log('[Hints] Failures analysis prompt (system):', data2?.promptSystem || '(none)');
+                console.log('[Hints] Failures analysis prompt (user):', data2?.promptUser || '(none)');
+              } catch {}
+            }
+          }
+        }
+      } catch {}
+    }
     setRunning(false);
   };
 
@@ -297,6 +365,11 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
     try { upgradeStatus(prob.id, "viewed"); } catch {}
   }, [prob?.id]);
 
+  // Debug: confirm ProblemEditor mounted
+  useEffect(() => {
+    try { console.debug('[Hints] ProblemEditor mounted'); } catch {}
+  }, []);
+
   const submitCode = async () => {
     if (!prob?.id) {
       alert("No problem loaded. Please try again.");
@@ -308,6 +381,12 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
     setIsSubmitting(true);
     setSubmissionError(null);
     setSubmissionResult(null);
+    // Clear hint/failure state to avoid stale info carrying over from Check
+    setFullDesc("");
+    setFullFailure("");
+    setFailedAnalyses([]);
+    setStudyResources(null);
+    setNextSuggestion(null);
     
     try {
       console.log('🚀 Starting submission for problem:', prob.id);
@@ -326,8 +405,88 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
       // Show a brief success message
       if (result.accepted) {
         console.log('🎉 Congratulations! Your solution was accepted!');
+        // Suggest a similar problem using public dataset (best-effort)
+        try {
+          const bust = `?t=${Date.now()}`;
+          const res = await fetch(`/data/problemset_complete.json${bust}`, { cache: 'no-store' });
+          if (res.ok) {
+            const arr = await res.json();
+            const tags = (prob.tags || []).map(t => String(t).toLowerCase());
+            const difficulty = prob.difficulty || ratingToDifficulty(prob.rating);
+            const candidates = Array.isArray(arr) ? arr.filter((p: any) => {
+              if (!p || p.name === prob.name) return false;
+              const ptags: string[] = Array.isArray(p.tags) ? p.tags.map((x: any) => String(x).toLowerCase()) : [];
+              const tagOverlap = tags.length ? ptags.some(t => tags.includes(t)) : true;
+              const pdiff = String(p.difficulty || ratingToDifficulty(p.rating));
+              const diffOk = difficulty ? (pdiff === difficulty) : true;
+              return tagOverlap && diffOk;
+            }) : [];
+            const pick = candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : null;
+            if (pick) setNextSuggestion({ id: pick.id || `${pick.contestId}/${pick.index}` || undefined, name: pick.name, contestId: pick.contestId, index: pick.index });
+          }
+        } catch {}
       } else {
         console.log('💪 Keep trying! Your solution needs some adjustments.');
+        if (hintEnabledRef.current) {
+          // 1) Analyze failed cases to extract categories first
+          let categoriesForResources: string[] = [];
+          try {
+            const failedCases = (result.testCases || [])
+              .map((tc, i) => ({ index: i, input: tc.input, expected: tc.expected, userOutput: tc.userOutput, passed: tc.passed }))
+              .filter(x => !x.passed)
+              .map(({ index, input, expected, userOutput }) => ({ index, input, expected, userOutput }));
+            if (failedCases.length) {
+              const res2 = await fetch('/api/hints/failures', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  language: 'python',
+                  snippet: lastValidCodeRef.current || code,
+                  problem: { id: prob.id, name: prob.name, statement: prob.statement },
+                  failedCases,
+                }),
+              });
+              if (res2.ok) {
+                const data2 = await res2.json();
+                const arr = Array.isArray(data2?.analyses) ? data2.analyses : [] as Array<{ index: number; explanation: string; categories: string[] }>;
+                setFailedAnalyses(arr);
+                const rawCats = arr.flatMap((a: any) => Array.isArray(a?.categories) ? a.categories.map((c: any) => String(c)) : []);
+                categoriesForResources = Array.from(new Set(rawCats)) as string[];
+                categoriesForResources = categoriesForResources.slice(0, 4);
+                try {
+                  if (data2?.promptSystem) console.log('[Hints] Failures analysis prompt (system):', data2.promptSystem);
+                  if (data2?.promptUser) console.log('[Hints] Failures analysis prompt (user):', data2.promptUser);
+                } catch {}
+              }
+            }
+          } catch {}
+
+          // 2) Fetch full-code summary with study resources driven by reason/categories
+          try {
+            const res = await fetch('/api/hints/full', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                language: 'python',
+                snippet: lastValidCodeRef.current || code,
+                problem: { id: prob.id, name: prob.name, statement: prob.statement, tags: prob.tags },
+                includeResources: true,
+                categories: categoriesForResources,
+                reason: categoriesForResources[0] || undefined,
+              }),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              setFullDesc((data?.description ?? '').toString());
+              setStudyResources(data?.resources || null);
+              // If prompts are provided, log them for transparency
+              try {
+                if (data?.promptSystem) console.log('[Hints] Full prompt (system):', data.promptSystem);
+                if (data?.promptUser) console.log('[Hints] Full prompt (user):', data.promptUser);
+              } catch {}
+            }
+          } catch {}
+        }
       }
       
     } catch (error) {
@@ -379,6 +538,23 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
     }
   };
 
+  // Clear hint glyphs when hints are disabled
+  useEffect(() => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    if (!hintEnabled) {
+      try {
+        const oldIds = hintDecorationsRef.current.map((d) => d.id);
+        if (oldIds.length) {
+          ed.deltaDecorations(oldIds, []);
+          hintDecorationsRef.current = [];
+          hintTextByIdRef.current = {};
+          hintReportByIdRef.current = {};
+        }
+      } catch {}
+    }
+  }, [hintEnabled]);
+
   return (
     <div className="min-h-screen bg-slate-950">
       {/* Navigation Header */}
@@ -418,9 +594,9 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
                 <Settings className="w-4 h-4 mr-2" />
                 Settings
               </Button>
-              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+              <Link href="/dashboard" className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center" title="Open dashboard" aria-label="Open dashboard">
                 <User className="w-4 h-4 text-white" />
-              </div>
+              </Link>
             </div>
           </div>
         </div>
@@ -433,7 +609,7 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-start gap-2 text-slate-200 min-w-0">
                 <LightbulbOff className="w-4 h-4 text-slate-300 shrink-0" />
-                <span className="text-xs md:text-sm leading-snug break-words">Need help while coding? Press the Hint button to activate hints.</span>
+                <span className="text-xs md:text-sm leading-snug break-words">Need help while coding? Press the Hint button to activate AI hints.</span>
               </div>
               <button
                 type="button"
@@ -613,6 +789,7 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
 
               {/* Monaco Editor (fills remaining vertical space between header and footer) */}
               <div className="bg-slate-900/95 backdrop-blur-sm">
+                <div ref={editorContainerRef} className="relative">
                 <Editor
                   // Height driven by content so editor does not show scrollbars
                   height={String(editorHeight)}
@@ -636,12 +813,12 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
                     smoothScrolling: true,
                     cursorBlinking: "phase",
                     cursorSmoothCaretAnimation: "on",
-                    glyphMargin: false,
+                    glyphMargin: true,
                     scrollbar: { vertical: 'hidden', horizontal: 'hidden' },
                     scrollBeyondLastColumn: 0,
                     overviewRulerBorder: false,
                     overviewRulerLanes: 0,
-                    lineDecorationsWidth: 0,
+                    lineDecorationsWidth: 30, // widened for glyph visibility
                     colorDecorators: true,
                     wordWrap: "on",
                     tabSize: 4,
@@ -650,13 +827,368 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
                     renderWhitespace: 'none'
                   }}
                   onChange={(value) => setCode(value || "")}
-                  onMount={(editor) => {
+                  onMount={(editor, monaco) => {
                     editorRef.current = editor;
+                    try { console.debug('[Hints] Editor mounted'); } catch {}
                     // initial resize
                     setTimeout(resizeEditorToContent, 20);
                     editor.onDidContentSizeChange(() => {
                       resizeEditorToContent();
                     });
+                    // Helper to build hover: prefer AI hint (if present); else show the line code; suppress if comment with empty value
+                    const makeHover = (model: any, ln: number, decoId?: string) => {
+                      const ai = decoId ? hintTextByIdRef.current[decoId] : undefined;
+                      if (ai && ai.trim()) {
+                        const safe = ai.replace(/```/g, '\\`\\`\\`');
+                        return [{ value: safe }];
+                      }
+                      const raw = model?.getLineContent?.(ln) ?? '';
+                      const m = raw.match(/^\s*#(.*)$/);
+                      if (m) {
+                        const inner = (m[1] || '').trim();
+                        if (!inner) return null; // do not display when comment value is empty
+                        const safe = inner.replace(/```/g, '\\`\\`\\`');
+                        return [{ value: `\`\`\`python\n${safe}\n\`\`\`` }];
+                      }
+                      const safe = raw.replace(/```/g, '\\`\\`\\`');
+                      return [{ value: `\`\`\`python\n${safe || ' '}\n\`\`\`` }];
+                    };
+
+                    // Fetch an AI hint for a given line; store by decoration id and refresh hover
+                    const fetchAiHint = async (decoId: string, lineNumber: number) => {
+                      try {
+                        const model = editor.getModel?.();
+                        if (!model) return;
+                        const lineText = model.getLineContent(lineNumber) || '';
+                        const totalLines = model.getLineCount();
+                        const start = Math.max(1, lineNumber - 7);
+                        const end = Math.min(totalLines, lineNumber + 7);
+                        const snippet: string = Array.from({ length: end - start + 1 }, (_, i) => start + i)
+                          .map((ln) => model.getLineContent(ln))
+                          .join("\n");
+                        const res = await fetch('/api/hints', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            language: 'python',
+                            lineNumber,
+                            lineText,
+                            snippet,
+                            problem: { id: prob.id, name: prob.name, statement: prob.statement },
+                          }),
+                        });
+                        if (!res.ok) return;
+                        const data = await res.json();
+                        const needHint: boolean = !!data?.needHint;
+                        const classes: string[] = Array.isArray(data?.errorClasses) ? data.errorClasses : [];
+                        const hint: string = (data?.hint ?? '').toString();
+                        const report = data?.report ?? null;
+                        // Log the exact prompt used when a hint is produced
+                        if (needHint && hint) {
+                          try {
+                            console.log('[Hints] Prompt (system) used for this line:', data?.promptSystem || '(none)');
+                            console.log('[Hints] Prompt (user) used for this line:', data?.promptUser || '(none)');
+                          } catch {}
+                        }
+                        if (!needHint || !classes.length) {
+                          // Remove this decoration entirely; no hint needed
+                          const oldIds = hintDecorationsRef.current.map((d) => d.id);
+                          const mdl = editor.getModel?.();
+                          if (!mdl) return;
+                          const rebuilt = hintDecorationsRef.current
+                            .filter((d) => d.id !== decoId)
+                            .map((d) => {
+                              const r = mdl.getDecorationRange?.(d.id);
+                              if (!r) return null;
+                              const hover = makeHover(mdl, r.startLineNumber, d.id);
+                              return {
+                                __oldId: d.id,
+                                range: { startLineNumber: r.startLineNumber, startColumn: 1, endLineNumber: r.startLineNumber, endColumn: 1 },
+                                options: {
+                                  isWholeLine: true,
+                                  glyphMarginClassName: 'codicon codicon-comment hint-glyph',
+                                  glyphMarginHoverMessage: (hover as any) ?? undefined,
+                                } as any,
+                              };
+                            })
+                            .filter(Boolean) as any[];
+                          const newIds = editor.deltaDecorations(oldIds, rebuilt);
+                          const newMap: Record<string, string> = {};
+                          const newReportMap: Record<string, any> = {};
+                          for (let i = 0; i < rebuilt.length; i++) {
+                            const oldId = (rebuilt[i] as any).__oldId as string;
+                            const nid = newIds[i];
+                            const txt = hintTextByIdRef.current[oldId];
+                            if (txt !== undefined) newMap[nid] = txt;
+                            const rep = hintReportByIdRef.current[oldId];
+                            if (rep !== undefined) newReportMap[nid] = rep;
+                          }
+                          hintDecorationsRef.current = newIds.map((id: string) => ({ id }));
+                          hintTextByIdRef.current = newMap;
+                          hintReportByIdRef.current = newReportMap;
+                          return;
+                        }
+                        // Store and refresh
+                        hintTextByIdRef.current[decoId] = hint;
+                        hintReportByIdRef.current[decoId] = report;
+                        const oldIds = hintDecorationsRef.current.map((d) => d.id);
+                        const mdl = editor.getModel?.();
+                        if (!mdl) return;
+                        const rebuilt = hintDecorationsRef.current
+                          .map((d) => {
+                            const r = mdl.getDecorationRange?.(d.id);
+                            if (!r) return null;
+                            const hv = makeHover(mdl, r.startLineNumber, d.id);
+                            return {
+                              __oldId: d.id,
+                              range: { startLineNumber: r.startLineNumber, startColumn: 1, endLineNumber: r.startLineNumber, endColumn: 1 },
+                              options: {
+                                isWholeLine: true,
+                                glyphMarginClassName: 'codicon codicon-comment hint-glyph',
+                                glyphMarginHoverMessage: (hv as any) ?? undefined,
+                              } as any,
+                            };
+                          })
+                          .filter(Boolean) as any[];
+                        const newIds = editor.deltaDecorations(oldIds, rebuilt);
+                        const newMap: Record<string, string> = {};
+                        const newReportMap: Record<string, any> = {};
+                        for (let i = 0; i < rebuilt.length; i++) {
+                          const oldId = (rebuilt[i] as any).__oldId as string;
+                          const nid = newIds[i];
+                          const txt = hintTextByIdRef.current[oldId];
+                          if (txt !== undefined) newMap[nid] = txt;
+                          const rep = hintReportByIdRef.current[oldId];
+                          if (rep !== undefined) newReportMap[nid] = rep;
+                        }
+                        hintDecorationsRef.current = newIds.map((id: string) => ({ id }));
+                        hintTextByIdRef.current = { ...hintTextByIdRef.current, ...newMap };
+                        hintReportByIdRef.current = { ...hintReportByIdRef.current, ...newReportMap };
+                      } catch {}
+                    };
+
+                    // Decide first via API; only add a glyph if a hint is actually needed
+                    const decideAndMaybeAddHintAtLine = async (line: number) => {
+                      if (!hintEnabledRef.current) return;
+                      const model = editor.getModel?.();
+                      if (!model) return;
+                      const maxLine = model.getLineCount();
+                      const lineNum = Math.max(1, Math.min(line, maxLine));
+                      // Find all existing decorations pinned to this line
+                      const entriesOnLine = hintDecorationsRef.current.filter((d) => {
+                        const r = model.getDecorationRange?.(d.id);
+                        return r?.startLineNumber === lineNum;
+                      });
+
+                      // Build context for decision
+                      const lineText = model.getLineContent(lineNum) || '';
+                      const trimmed = lineText.trim();
+                      // Skip empty or comment-only lines locally and remove any stale glyph
+                      if (!trimmed || /^#/.test(trimmed)) {
+            if (entriesOnLine.length) {
+                          const oldIds = hintDecorationsRef.current.map((d) => d.id);
+                          const mdl = editor.getModel?.();
+                          if (!mdl) return;
+                          const rebuilt = hintDecorationsRef.current
+              .filter((d) => !entriesOnLine.some((x) => x.id === d.id))
+                            .map((d) => {
+                              const r = mdl.getDecorationRange?.(d.id);
+                              if (!r) return null;
+                              const hover = makeHover(mdl, r.startLineNumber, d.id);
+                              return {
+                                __oldId: d.id,
+                                range: { startLineNumber: r.startLineNumber, startColumn: 1, endLineNumber: r.startLineNumber, endColumn: 1 },
+                                options: {
+                                  isWholeLine: true,
+                                  glyphMarginClassName: 'codicon codicon-comment hint-glyph',
+                                  glyphMarginHoverMessage: (hover as any) ?? undefined,
+                                } as any,
+                              };
+                            })
+                            .filter(Boolean) as any[];
+                          const newIds = editor.deltaDecorations(oldIds, rebuilt);
+                          const newMap: Record<string, string> = {};
+                          const newReportMap: Record<string, any> = {};
+                          for (let i = 0; i < rebuilt.length; i++) {
+                            const oldId = (rebuilt[i] as any).__oldId as string;
+                            const nid = newIds[i];
+                            const txt = hintTextByIdRef.current[oldId];
+                            if (txt !== undefined) newMap[nid] = txt;
+                            const rep = hintReportByIdRef.current[oldId];
+                            if (rep !== undefined) newReportMap[nid] = rep;
+                          }
+                          hintDecorationsRef.current = newIds.map((id: string) => ({ id }));
+                          hintTextByIdRef.current = newMap;
+                          hintReportByIdRef.current = newReportMap;
+                        }
+                        return;
+                      }
+                      const snippet: string = model.getValue(); // full user code for global context
+
+                      try {
+                        const res = await fetch('/api/hints', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            language: 'python',
+                            lineNumber: lineNum,
+                            lineText,
+                            snippet,
+                            problem: { id: prob.id, name: prob.name, statement: prob.statement },
+                          }),
+                        });
+                        if (!res.ok) return;
+                        const data = await res.json();
+                        const needHint: boolean = !!data?.needHint;
+                        const classes: string[] = Array.isArray(data?.errorClasses) ? data.errorClasses : [];
+                        const hint: string = (data?.hint ?? '').toString();
+                        const report = data?.report ?? null;
+                        // Log the exact prompt used when a hint is produced
+                        if (needHint && hint) {
+                          try {
+                            console.log('[Hints] Prompt (system) used for this line:', data?.promptSystem || '(none)');
+                            console.log('[Hints] Prompt (user) used for this line:', data?.promptUser || '(none)');
+                          } catch {}
+                        }
+
+                        const oldIds = hintDecorationsRef.current.map((d) => d.id);
+                        const modelRanges = hintDecorationsRef.current
+                          .map((d) => ({ id: d.id, r: model.getDecorationRange?.(d.id) }))
+                          .filter((x) => !!x.r);
+
+                        if (!needHint || !classes.length) {
+                          // Remove any and all decorations on this line
+                          if (entriesOnLine.length) {
+                            const idsOnLine = new Set(entriesOnLine.map((e) => e.id));
+                            const rebuilt = modelRanges
+                              .filter(({ id }) => !idsOnLine.has(id))
+                              .map(({ id, r }) => {
+                                const hover = makeHover(model, r!.startLineNumber, id);
+                                return {
+                                  __oldId: id,
+                                  range: { startLineNumber: r!.startLineNumber, startColumn: 1, endLineNumber: r!.startLineNumber, endColumn: 1 },
+                                  options: {
+                                    isWholeLine: true,
+                                    glyphMarginClassName: 'codicon codicon-comment hint-glyph',
+                                    glyphMarginHoverMessage: (hover as any) ?? undefined,
+                                  } as any,
+                                };
+                              });
+                            const newIds = editor.deltaDecorations(oldIds, rebuilt as any);
+                            const newMap: Record<string, string> = {};
+                            const newReportMap: Record<string, any> = {};
+                            for (let i = 0; i < rebuilt.length; i++) {
+                              const oldId = (rebuilt[i] as any).__oldId as string;
+                              const nid = newIds[i];
+                              const txt = hintTextByIdRef.current[oldId];
+                              if (txt !== undefined) newMap[nid] = txt;
+                              const rep = hintReportByIdRef.current[oldId];
+                              if (rep !== undefined) newReportMap[nid] = rep;
+                            }
+                            hintDecorationsRef.current = newIds.map((id: string) => ({ id }));
+                            hintTextByIdRef.current = newMap;
+                            hintReportByIdRef.current = newReportMap;
+                          }
+                          return;
+                        }
+
+                        // needHint = true with valid classes. Ensure at most one decoration on this line
+                        const safe = hint.replace(/```/g, '\\`\\`\\`');
+                        if (entriesOnLine.length) {
+                          const keepId = entriesOnLine[0].id; // keep the first, drop others
+                          const idsToDrop = new Set(entriesOnLine.slice(1).map((e) => e.id));
+                          // Update existing hint text, then rebuild to refresh hover
+                          hintTextByIdRef.current[keepId] = hint;
+                          hintReportByIdRef.current[keepId] = report;
+                          const rebuilt = modelRanges
+                            .filter(({ id }) => !idsToDrop.has(id))
+                            .map(({ id, r }) => {
+                            const hv = makeHover(model, r!.startLineNumber, id);
+                            return {
+                              __oldId: id,
+                              range: { startLineNumber: r!.startLineNumber, startColumn: 1, endLineNumber: r!.startLineNumber, endColumn: 1 },
+                              options: {
+                                isWholeLine: true,
+                                glyphMarginClassName: 'codicon codicon-comment hint-glyph',
+                                glyphMarginHoverMessage: (hv as any) ?? undefined,
+                              } as any,
+                            };
+                          });
+                          const newIds = editor.deltaDecorations(oldIds, rebuilt as any);
+                          const newMap: Record<string, string> = {};
+                          const newReportMap: Record<string, any> = {};
+                          for (let i = 0; i < rebuilt.length; i++) {
+                            const oldId = (rebuilt[i] as any).__oldId as string;
+                            const nid = newIds[i];
+                            const txt = hintTextByIdRef.current[oldId];
+                            if (txt !== undefined) newMap[nid] = txt;
+                            const rep = hintReportByIdRef.current[oldId];
+                            if (rep !== undefined) newReportMap[nid] = rep;
+                          }
+                          hintDecorationsRef.current = newIds.map((id: string) => ({ id }));
+                          hintTextByIdRef.current = newMap;
+                          hintReportByIdRef.current = newReportMap;
+                        } else {
+                          // Add new decoration on this line with hint
+                          const existingRanges = modelRanges.map(({ id, r }) => {
+                            const hover = makeHover(model, r!.startLineNumber, id);
+                            return {
+                              __oldId: id,
+                              range: { startLineNumber: r!.startLineNumber, startColumn: 1, endLineNumber: r!.startLineNumber, endColumn: 1 },
+                              options: {
+                                isWholeLine: true,
+                                glyphMarginClassName: 'codicon codicon-comment hint-glyph',
+                                glyphMarginHoverMessage: (hover as any) ?? undefined,
+                              } as any,
+                            };
+                          });
+                          const newRange = {
+                            range: { startLineNumber: lineNum, startColumn: 1, endLineNumber: lineNum, endColumn: 1 },
+                            options: {
+                              isWholeLine: true,
+                              glyphMarginClassName: 'codicon codicon-comment hint-glyph',
+                              glyphMarginHoverMessage: [{ value: safe }] as any,
+                            } as any,
+                          };
+                          const allNew = [...existingRanges, newRange] as any;
+                          const newIds = editor.deltaDecorations(oldIds, allNew);
+                          // Remap stored data for existing decos and add mapping for the created deco
+                          const newMap: Record<string, string> = {};
+                          const newReportMap: Record<string, any> = {};
+                          for (let i = 0; i < existingRanges.length; i++) {
+                            const oldId = (existingRanges[i] as any).__oldId as string;
+                            const newId = newIds[i];
+                            if (oldId && newId) {
+                              const txt = hintTextByIdRef.current[oldId];
+                              if (txt !== undefined) newMap[newId] = txt;
+                              const rep = hintReportByIdRef.current[oldId];
+                              if (rep !== undefined) newReportMap[newId] = rep;
+                            }
+                          }
+                          const createdId = newIds[newIds.length - 1];
+                          hintDecorationsRef.current = newIds.map((id: string) => ({ id }));
+                          hintTextByIdRef.current = { ...newMap, [createdId]: hint };
+                          hintReportByIdRef.current = { ...newReportMap, [createdId]: report };
+                        }
+                      } catch {}
+                    };
+
+                    // Re-evaluate all current hint lines to remove/update stale ones
+                    const recheckAllHintDecorations = async (excludeLine?: number) => {
+                      if (!hintEnabledRef.current) return;
+                      const model = editor.getModel?.();
+                      if (!model) return;
+                      const items = hintDecorationsRef.current
+                        .map((d) => ({ id: d.id, r: model.getDecorationRange?.(d.id) }))
+                        .filter((x) => !!x.r) as { id: string; r: any }[];
+                      // Snapshot target lines first to avoid issues while decorations remap
+                      const targetLines = items
+                        .map(({ r }) => r.startLineNumber)
+                        .filter((ln) => (excludeLine ? ln !== excludeLine : true));
+                      for (const ln of targetLines) {
+                        await decideAndMaybeAddHintAtLine(ln);
+                      }
+                    };
                     // Keep a snapshot of valid code (used when reverting illegal edits)
                     try {
                       lastValidCodeRef.current = editor.getValue();
@@ -665,7 +1197,26 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
 
                     // Block edits inside the protected constraints header
                     try {
-                      editor.onDidChangeModelContent((ev: { changes?: Array<{ rangeOffset: number }> }) => {
+                      // addHintDecorationAtLine defined above
+
+                      // Pre-capture Enter: line, column, whether line has code, and whether code exists before the cursor
+                      editor.onKeyDown((e: any) => {
+                        const key = e?.browserEvent?.key;
+                        if (key !== 'Enter') return;
+                        const model = editor.getModel?.();
+                        if (!model) return;
+                        const pos = editor.getPosition?.();
+                        if (!pos) return;
+                        const lineContent = model.getLineContent(pos.lineNumber) ?? '';
+                        const left = lineContent.slice(0, Math.max(0, (pos.column || 1) - 1));
+                        const right = lineContent.slice(Math.max(0, (pos.column || 1) - 1));
+                        const hasCode = /\S/.test(lineContent); // any non-whitespace on the line
+                        const hasCodeBefore = /\S/.test(left);
+                        lastEnterInfoRef.current = { line: pos.lineNumber, col: pos.column || 1, hadCode: hasCode, hasCodeBefore };
+                        try { console.debug('[Hints] Enter pre-capture at line', pos.lineNumber, 'hadCode=', hasCode); } catch {}
+                      });
+
+                       editor.onDidChangeModelContent((ev: { changes?: Array<{ rangeOffset: number; text?: string }> }) => {
                         if (isRevertingRef.current) return;
                         const model = editor.getModel?.();
                         if (!model) return;
@@ -694,6 +1245,79 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
                             hasMarkedTriedRef.current = true;
                           }
                         }
+
+                        // Immediate hint glyph on newline insertion when hints are enabled
+                        const chWithNl = (ev?.changes ?? []).find((ch) => /\r?\n/.test((ch as any).text ?? '')) as
+                          | { rangeOffset: number; text?: string }
+                          | undefined;
+                          if (chWithNl) {
+                          try { console.debug('[Hints] Newline detected (global)'); } catch {}
+                          // Use the pre-captured Enter info to decide placement and skipping
+                          const info = lastEnterInfoRef.current;
+                          lastEnterInfoRef.current = null; // consume
+                          if (!hintEnabledRef.current || !info) return;
+                          if (!info.hadCode) {
+                            try { console.debug('[Hints] Skipping glyph for empty-line Enter at line', info.line); } catch {}
+                            return;
+                          }
+                          const protectedEndPos = model.getPositionAt?.(protectedEnd);
+                          if (protectedEndPos && info.line < protectedEndPos.lineNumber) {
+                            // Enter within protected region: allow fallback handler to manage
+                            return;
+                          }
+                          // Determine which line now owns the code after Enter
+                          // If there was code before the cursor, the original line keeps code; otherwise code moved to the next line
+                          const targetLine = info.hasCodeBefore ? info.line : info.line + 1;
+
+                          // STRICT line-based behavior: clear any previously displayed hint decorations
+                          // so only the new line's hint (if any) remains displayed.
+                          if (hintDecorationsRef.current.length) {
+                            const oldIds = hintDecorationsRef.current.map(d => d.id);
+                            editor.deltaDecorations(oldIds, []);
+                            hintDecorationsRef.current = [];
+                            hintTextByIdRef.current = {};
+                            hintReportByIdRef.current = {};
+                          }
+                          // Decide first, then add glyph only if needed
+                          decideAndMaybeAddHintAtLine(targetLine);
+                          // Do not recheck other lines here; we want hints to be strictly tied to the current Enter line
+                        }
+
+          // Refresh hover messages for all current decorations to reflect live line text or AI hints
+                          if (hintDecorationsRef.current.length) {
+                            const oldIds = hintDecorationsRef.current.map((d) => d.id);
+                            const refreshed = hintDecorationsRef.current
+                              .map((d) => ({ id: d.id, r: model.getDecorationRange?.(d.id) }))
+                              .filter((x) => !!x.r)
+                              .map(({ id, r }) => {
+                                const hover = makeHover(model, r!.startLineNumber, id);
+                                return {
+                                  __oldId: id,
+                                  range: {
+                                    startLineNumber: r!.startLineNumber,
+                                    startColumn: 1,
+                                    endLineNumber: r!.startLineNumber,
+                                    endColumn: 1,
+                                  },
+                                  options: {
+                                    isWholeLine: true,
+                                    glyphMarginClassName: 'codicon codicon-comment hint-glyph',
+                                    glyphMarginHoverMessage: (hover as any) ?? undefined,
+                                  } as any,
+                                };
+                              });
+                            const newIds = editor.deltaDecorations(oldIds, refreshed as any);
+                            // Remap AI hints to the corresponding new ids
+                            const newMap: Record<string, string> = {};
+                            for (let i = 0; i < refreshed.length; i++) {
+                              const oldId = (refreshed[i] as any).__oldId as string;
+                              const newId = newIds[i];
+                              const txt = hintTextByIdRef.current[oldId];
+                              if (txt !== undefined) newMap[newId] = txt;
+                            }
+                            hintDecorationsRef.current = newIds.map((id: string) => ({ id }));
+                            hintTextByIdRef.current = newMap;
+                          }
                       });
                     } catch {}
 
@@ -715,6 +1339,49 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
                           }
                         };
                         domNode.addEventListener('wheel', wheelHandler, { passive: false });
+
+      // Fallback: if Enter is pressed inside protected header, add glyph if the line had code
+                        try {
+                          editor.onKeyDown((e: any) => {
+                            const key = e?.browserEvent?.key;
+                            if (!hintEnabledRef.current) return;
+                            if (key === 'Enter') {
+                              const pos = editor.getPosition?.();
+                              const model2 = editor.getModel?.();
+                              if (!pos || !model2) return;
+                              const protectedEndPos = model2.getPositionAt?.(protectedEndOffsetRef.current ?? 0);
+                              if (protectedEndPos && pos.lineNumber < protectedEndPos.lineNumber) {
+        const lineContent = model2.getLineContent(pos.lineNumber) ?? '';
+        const left = lineContent.slice(0, Math.max(0, (pos.column || 1) - 1));
+        const hasCode = /\S/.test(lineContent);
+        const hasCodeBefore = /\S/.test(left);
+        try { console.debug('[Hints] Enter in protected region at line', pos.lineNumber, 'hadCode=', hasCode, 'hasCodeBefore=', hasCodeBefore); } catch {}
+                            if (hasCode) {
+          // Clear previous hints to keep behavior strictly line-based per Enter
+          if (hintDecorationsRef.current.length) {
+            const oldIds = hintDecorationsRef.current.map(d => d.id);
+            editor.deltaDecorations(oldIds, []);
+            hintDecorationsRef.current = [];
+            hintTextByIdRef.current = {};
+            hintReportByIdRef.current = {};
+          }
+          if (hasCodeBefore) {
+            decideAndMaybeAddHintAtLine(pos.lineNumber);
+          } else {
+            // Code moved to next line; only add if next line is not inside protected header
+            if (pos.lineNumber + 1 >= protectedEndPos.lineNumber) {
+              decideAndMaybeAddHintAtLine(pos.lineNumber + 1);
+            }
+          }
+        }
+                              }
+                            }
+                          });
+                        } catch {}
+
+                        // No click popup behavior; hover hint is provided via glyphMarginHoverMessage
+
+                        // Store unsubscribe for wheel
                         wheelUnsubscribeRef.current = () => domNode.removeEventListener('wheel', wheelHandler);
                       }
                     } catch {
@@ -722,6 +1389,7 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
                     }
                   }}
                 />
+                </div>
               </div>
 
               {/* Editor Action Buttons */}
@@ -732,6 +1400,7 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
                       variant="hint"
                       onClick={() => {
                         if (!hintEnabled) {
+                          try { console.debug('[Hints] Enabling hints'); } catch {}
                           setHintEnabled(true);
                           setShowHint(true);
                         } else {
@@ -753,7 +1422,7 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
           {hintEnabled && (
                       <Button
             variant="secondary"
-                        onClick={() => { setHintEnabled(false); setShowHint(false); }}
+                        onClick={() => { try { console.debug('[Hints] Disabling hints'); } catch {}; setHintEnabled(false); setShowHint(false); }}
             className="rounded-full px-4 py-2.5 text-sm md:text-base backdrop-blur-md transition-all btn-deactivate"
                         title="Deactivate hints"
                         aria-label="Deactivate hints"
@@ -828,19 +1497,45 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
                   </div>
                 </div>
 
-        {hintEnabled && showHint && (
-                  <div className="mt-4 p-4 bg-gradient-to-r from-yellow-500/10 to-amber-500/10 border border-yellow-500/20 rounded-xl animate-slide-up">
-                    <div className="flex items-start space-x-3">
-      <Lightbulb className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <h4 className="text-sm font-semibold text-yellow-300 mb-2">💡 Hint</h4>
-                        <p className="text-sm text-slate-300 leading-relaxed">
-            {prob.hint ?? "Try to derive a simpler/brute-force solution and then optimize it."}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
+        {/* Hint/summary box: show code logic and also suggest next problem when available */}
+  {(hintEnabled && (fullDesc || studyResources || failedAnalyses.length)) || (submissionResult?.accepted && nextSuggestion) ? (
+          <div className="mt-4 p-4 bg-gradient-to-r from-yellow-500/10 to-amber-500/10 border border-yellow-500/20 rounded-xl animate-slide-up">
+            <div className="flex items-start space-x-3">
+              <Lightbulb className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
+              <div className="w-full">
+    <h4 className="text-sm font-semibold text-yellow-300 mb-2">Your code logic</h4>
+    {fullDesc && (<p className="text-sm text-slate-300 leading-relaxed">{fullDesc}</p>)}
+    {studyResources && (studyResources.youtube || studyResources.webpage) && (
+      <div className="mt-3 space-y-1">
+        <div className="text-xs text-slate-300"><span className="font-semibold">Study material:</span></div>
+        {studyResources.youtube && studyResources.youtube.url && (
+          <div className="text-xs">
+            <span className="text-slate-400">YouTube:</span> <a className="text-blue-300 underline" href={studyResources.youtube.url} target="_blank" rel="noreferrer">{studyResources.youtube.title || studyResources.youtube.url}</a>
+          </div>
+        )}
+        {studyResources.webpage && studyResources.webpage.url && (
+          <div className="text-xs">
+            <span className="text-slate-400">Webpage:</span> <a className="text-blue-300 underline" href={studyResources.webpage.url} target="_blank" rel="noreferrer">{studyResources.webpage.title || studyResources.webpage.url}</a>
+          </div>
+        )}
+      </div>
+    )}
+    {nextSuggestion && submissionResult?.accepted && (
+      <div className="mt-3 text-xs text-slate-300">
+        <span className="font-semibold">Next similar problem:</span>{' '}
+        {nextSuggestion.contestId && nextSuggestion.index ? (
+          <Link className="text-blue-300 underline" href={`/problems/${nextSuggestion.contestId}/${nextSuggestion.index}`} target="_blank" rel="noreferrer">
+            {nextSuggestion.name || `${nextSuggestion.contestId}/${nextSuggestion.index}`}
+          </Link>
+        ) : (
+          <span>{nextSuggestion.name}</span>
+        )}
+      </div>
+    )}
+              </div>
+            </div>
+          </div>
+        ) : null}
               </div>
             </Card>
 
@@ -1016,6 +1711,12 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
                                     <div>
                                       <div className="text-sm font-extrabold text-red-400 mb-0.5 uppercase tracking-wide">Your Output</div>
                                       <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">{tc.userOutput}</div>
+                                      {failedAnalyses.find(a => a.index === originalIdx) && (
+                                        <div className="mt-2 p-2 rounded border border-amber-500/30 bg-amber-500/10">
+                                          <div className="text-amber-300 text-xs font-semibold mb-1">Why test case {originalIdx + 1} failed:</div>
+                                          <div className="text-amber-200 text-xs whitespace-pre-wrap break-words">{failedAnalyses.find(a => a.index === originalIdx)?.explanation}</div>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 </Card>
@@ -1023,6 +1724,7 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
                           </div>
                         </div>
                       )}
+                      {/* Duplicate nextSuggestion card removed - suggestion now only shown in the hints/summary box above */}
                     </div>
                   )}
                 </div>
@@ -1148,6 +1850,13 @@ ${constraintsLines.map((line) => `# - ${line}`).join("\n")}
                                   <div>
                                     <div className="text-sm font-extrabold text-red-400 mb-0.5 uppercase tracking-wide">Your Output</div>
                                     <div className="font-mono text-white text-sm leading-snug whitespace-pre-wrap break-words">{userOutputs[i] || ''}</div>
+                                    {/* Failed case analysis if available */}
+                  {failedAnalyses.find(a => a.index === i) && (
+                                      <div className="mt-2 p-2 rounded border border-amber-500/30 bg-amber-500/10">
+                    <div className="text-amber-300 text-xs font-semibold mb-1">Why test case {i + 1} failed</div>
+                                        <div className="text-amber-200 text-xs whitespace-pre-wrap break-words">{failedAnalyses.find(a => a.index === i)?.explanation}</div>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>

@@ -96,9 +96,9 @@ export default function LandingPage() {
                 <Settings className="w-4 h-4 mr-2 text-blue-400" />
                 Settings
               </Button>
-              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+              <Link href="/dashboard" className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center" title="Open dashboard" aria-label="Open dashboard">
                 <User className="w-4 h-4 text-white" />
-              </div>
+              </Link>
             </div>
           </div>
         </div>

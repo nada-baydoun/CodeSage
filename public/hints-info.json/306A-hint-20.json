@@ -1,0 +1,13 @@
+{
+  "errorClasses": [
+    "runtime"
+  ],
+  "hint": "Are you certain that the index i will always be valid in the array a?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}

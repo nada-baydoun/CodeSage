@@ -1,0 +1,14 @@
+{
+  "errorClasses": [
+    "syntax",
+    "runtime"
+  ],
+  "hint": "Are you sure about the type of division you're using for candies?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}

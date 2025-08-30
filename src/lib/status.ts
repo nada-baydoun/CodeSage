@@ -5,7 +5,10 @@
 export type Status = "none" | "viewed" | "tried" | "accepted" | "rejected";
 
 const STORAGE_KEY = "cf-status";
-const ORDER: Status[] = ["none", "viewed", "tried", "accepted", "rejected"];
+// Order controls allowed "upgrade" directions. Place `rejected` before `accepted`
+// so that upgrading from `rejected` -> `accepted` is allowed, but `accepted` -> `rejected`
+// is not allowed by rank comparison.
+const ORDER: Status[] = ["none", "viewed", "tried", "rejected", "accepted"];
 
 function isClient() {
   return typeof window !== "undefined" && typeof localStorage !== "undefined";
@@ -44,6 +47,11 @@ export function getStatus(id: string): Status {
 export function setStatus(id: string, status: Status) {
   if (!isClient()) return;
   const map = loadStatusMap();
+  const cur = map[id] ?? "none";
+  // Once accepted, status is terminal and cannot be changed.
+  if (cur === "accepted") return;
+  // If currently rejected, only allow transition to accepted; otherwise keep rejected.
+  if (cur === "rejected" && status !== "accepted") return;
   map[id] = status;
   saveStatusMap(map);
 }
@@ -52,6 +60,17 @@ export function upgradeStatus(id: string, next: Status) {
   if (!isClient()) return;
   const map = loadStatusMap();
   const cur = map[id] ?? "none";
+  // Once accepted, never change.
+  if (cur === "accepted") return;
+  // If currently rejected, only allow upgrading to accepted.
+  if (cur === "rejected") {
+    if (next === "accepted") {
+      map[id] = "accepted";
+      saveStatusMap(map);
+    }
+    return;
+  }
+
   const curRank = ORDER.indexOf(cur);
   const nextRank = ORDER.indexOf(next);
   if (nextRank > curRank) {

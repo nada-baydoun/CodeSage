@@ -1,0 +1,14 @@
+{
+  "errorClasses": [
+    "syntax",
+    "knowledge_gap"
+  ],
+  "hint": "Are you sure about using '/' for integer division in Python?",
+  "id": "306/A",
+  "contestId": 306,
+  "index": "A",
+  "rating": 800,
+  "tags": [
+    "implementation"
+  ]
+}
