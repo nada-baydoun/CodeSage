@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { env } from "@/config/env";
+import { getStrictEnv } from "@/config/env";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -134,7 +134,8 @@ export async function POST(req: Request) {
     const thinking1 = pickThinkingStepFirst(thk, problemId);
     const checkerVariants = pickCheckerVariants(chk, problemId);
 
-    const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const { OPENAI_API_KEY } = getStrictEnv();
+  const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
     // Lightweight Python-line heuristics to reduce false positives
     const isPython = (language || '').toLowerCase().includes('python');

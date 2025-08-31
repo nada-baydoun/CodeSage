@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { env } from "@/config/env";
+import { env, getStrictEnv } from "@/config/env";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { URL } from "node:url";
@@ -122,7 +122,8 @@ export async function POST(req: Request) {
     const thinking1 = pickThinkingStepFirst(thk, problemId);
     const checkerVariants = pickCheckerVariants(chk, problemId);
 
-    const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const { OPENAI_API_KEY } = getStrictEnv();
+  const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
   const sys = [
       "You are a helpful competitive programming coach.",
