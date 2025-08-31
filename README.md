@@ -56,6 +56,12 @@ Common scripts
 - Build: `npm run build`
 - Start (prod): `npm start`
 
+## Environment variables
+
+- Copy `.env.example` to `.env.local` and fill values for local development.
+- `OPENAI_API_KEY` is required only at runtime by API routes; builds do not require it.
+- On GitHub Actions, set `OPENAI_API_KEY` as a repository secret if you plan to run API integration steps.
+
 ## Project Structure
 
 ```
