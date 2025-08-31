@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import ProblemEditor from '@/components/ProblemEditor';
 import { headers } from 'next/headers';
 import Link from 'next/link';
