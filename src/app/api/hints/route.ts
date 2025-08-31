@@ -134,8 +134,14 @@ export async function POST(req: Request) {
     const thinking1 = pickThinkingStepFirst(thk, problemId);
     const checkerVariants = pickCheckerVariants(chk, problemId);
 
-  const { OPENAI_API_KEY } = getStrictEnv();
-  const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+    let OPENAI_API_KEY: string | undefined;
+    try {
+      ({ OPENAI_API_KEY } = getStrictEnv());
+    } catch {
+      // No secret available; return a no-op response instead of failing.
+      return NextResponse.json({ needHint: false, hint: "", errorClasses: [], report: null }, { status: 200 });
+    }
+    const openai = new OpenAI({ apiKey: OPENAI_API_KEY! });
 
     // Lightweight Python-line heuristics to reduce false positives
     const isPython = (language || '').toLowerCase().includes('python');

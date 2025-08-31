@@ -122,8 +122,13 @@ export async function POST(req: Request) {
     const thinking1 = pickThinkingStepFirst(thk, problemId);
     const checkerVariants = pickCheckerVariants(chk, problemId);
 
-  const { OPENAI_API_KEY } = getStrictEnv();
-  const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+    let OPENAI_API_KEY: string | undefined;
+    try {
+      ({ OPENAI_API_KEY } = getStrictEnv());
+    } catch {
+      return NextResponse.json({ description: "", failure: "", resources: null }, { status: 200 });
+    }
+    const openai = new OpenAI({ apiKey: OPENAI_API_KEY! });
 
   const sys = [
       "You are a helpful competitive programming coach.",

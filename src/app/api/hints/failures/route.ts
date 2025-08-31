@@ -116,8 +116,13 @@ export async function POST(req: Request) {
     const thinking1 = pickThinkingStepFirst(thk, problemId);
     const checkerVariants = pickCheckerVariants(chk, problemId);
 
-  const { OPENAI_API_KEY } = getStrictEnv();
-  const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+    let OPENAI_API_KEY: string | undefined;
+    try {
+      ({ OPENAI_API_KEY } = getStrictEnv());
+    } catch {
+      return NextResponse.json({ analyses: [] }, { status: 200 });
+    }
+    const openai = new OpenAI({ apiKey: OPENAI_API_KEY! });
 
     // System prompt: similar spirit to line-hints, but analyze FULL CODE and explain FAILED TESTS only.
     const sys = [
