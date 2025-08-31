@@ -59,7 +59,9 @@ Common scripts
 ## Environment variables
 
 - Copy `.env.example` to `.env.local` and fill values for local development.
-- `OPENAI_API_KEY` is required only at runtime by API routes; builds do not require it.
+- `OPENAI_API_KEY` is required at runtime by API routes.
+  - In local dev/CI without secrets, the API routes return safe no-op responses.
+  - In production (or when `REQUIRE_AI=true`), the API routes will return 500 if the key is missing.
 - On GitHub Actions, set `OPENAI_API_KEY` as a repository secret if you plan to run API integration steps.
 
 ## Project Structure

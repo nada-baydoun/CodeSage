@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { env, getStrictEnv } from "@/config/env";
+const AI_REQUIRED = process.env.NODE_ENV === 'production' || process.env.REQUIRE_AI === 'true';
 import fs from "node:fs/promises";
 import path from "node:path";
 import { URL } from "node:url";
@@ -126,6 +127,9 @@ export async function POST(req: Request) {
     try {
       ({ OPENAI_API_KEY } = getStrictEnv());
     } catch {
+      if (AI_REQUIRED) {
+        return NextResponse.json({ error: "OPENAI_API_KEY is required in production" }, { status: 500 });
+      }
       return NextResponse.json({ description: "", failure: "", resources: null }, { status: 200 });
     }
     const openai = new OpenAI({ apiKey: OPENAI_API_KEY! });
